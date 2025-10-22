@@ -26,7 +26,7 @@
           nameserver 8.8.4.4
         create: yes
         marker: "# {mark} ANSIBLE MANAGED BLOCK - CRITICAL DNS FIX"
-      # FIX: Changed groups['workers'] to groups['worker_nodes'] to match your inventory setup.
+      # Using 'worker_nodes' as fixed in the previous iteration
       when: inventory_hostname in groups['control_plane'] or inventory_hostname in groups['worker_nodes']
 
     - name: A.2. Update apt cache
@@ -45,7 +45,7 @@
           - runc
           - apt-transport-https
           - ca-certificates
-          - python3-pip # <--- NEW: Required for the kubernetes Python library
+          - python3-pip # Required for the kubernetes Python library
         state: present
 
     - name: B2. Ensure Docker is running and enabled
@@ -74,6 +74,7 @@
       ansible.builtin.copy:
         src: /tmp/kubernetes-apt-keyring.gpg
         dest: /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+        remote_src: no # Source is on localhost
         mode: '0644'
 
     - name: C4. Add Kubernetes repository to sources list
@@ -176,7 +177,7 @@
     # ----------------------------------------------------------------------
     # A. Kubeadm Init & Reset
     # ----------------------------------------------------------------------
-    - name: A.0. CRITICAL RESET- Reset Kubernetes cluster before init (Fixes rc=1 failure)
+    - name: A.0. CRITICAL RESET - Reset Kubernetes cluster before init (Fixes rc=1 failure)
       ansible.builtin.command: kubeadm reset -f
       changed_when: true
       ignore_errors: yes
@@ -189,13 +190,14 @@
         --ignore-preflight-errors=all
       register: init_result
       
-    - name: A1.5. CRITICAL INSTALL- Install Python Kubernetes client for k8s_info module
+    - name: A1.5. CRITICAL INSTALL - Install Python Kubernetes client for k8s_info module (FIXED- PEP 668)
       ansible.builtin.pip:
         name: kubernetes
         state: present
-        executable: pip3 # Ensures the correct pip version is used
-      # IMPORTANT: This must run before A2
-      when: init_result is success # Only needed if init succeeded
+        executable: pip3
+        # FIX: Pass the flag to bypass the 'externally-managed-environment' error
+        extra_args: --break-system-packages 
+      when: init_result is success
       
     # ----------------------------------------------------------------------
     # A2. CRITICAL WAIT: Wait for the API server static pod to become ready
@@ -266,7 +268,7 @@
 # PLAY 3: Join Worker Nodes to the Cluster
 # ==============================================================================
 - name: 03 - Join Worker Nodes
-  hosts: worker_nodes # <--- Uses 'worker_nodes'
+  hosts: worker_nodes
   become: yes
   tasks:
     - name: A. Wait for Control Plane to finish initialization
