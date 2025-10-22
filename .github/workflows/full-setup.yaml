@@ -1,0 +1,42 @@
+name: Kubernetes Cluster Setup
+
+# This allows you to run the workflow manually from the Actions tab
+on:
+  workflow_dispatch:
+
+jobs:
+  run-ansible-setup:
+    runs-on: ubuntu-latest
+    
+    # Define the environment variables for Ansible connection
+    env:
+      ANSIBLE_HOST_KEY_CHECKING: False
+
+    steps:
+      - name: Checkout repository code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Install Ansible and dependencies
+        run: |
+          # Install Ansible and the required Kubernetes collection (for the wait task)
+          pip install ansible kubernetes
+          
+      - name: Configure SSH Key
+        # Set up the SSH private key needed to connect to the AWS instance
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          # Using the secret name confirmed earlier
+          ssh-private-key: ${{ secrets.K8S_SSH_KEY }}
+
+      - name: Run K8s Setup Playbook (with API Wait Fix)
+        # This executes the full cluster initialization, including the CNI fix.
+        run: |
+          ansible-playbook -i cluster-bootstrap/inventory.ini cluster-bootstrap/k8s_setup.yaml \
+          -u ubuntu \
+          -e "ansible_python_interpreter=/usr/bin/python3" \
+          -e "ansible_ssh_extra_args='-o StrictHostKeyChecking=no'"
