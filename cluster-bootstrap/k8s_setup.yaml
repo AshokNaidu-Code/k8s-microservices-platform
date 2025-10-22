@@ -177,25 +177,25 @@
     # ----------------------------------------------------------------------
     # A. Kubeadm Init & Reset
     # ----------------------------------------------------------------------
-    - name: A.0. CRITICAL RESET - Reset Kubernetes cluster before init (Fixes rc=1 failure)
+    - name: A.0. CRITICAL RESET- Reset Kubernetes cluster before init (Fixes rc=1 failure)
       ansible.builtin.command: kubeadm reset -f
       changed_when: true
       ignore_errors: yes
 
-    - name: A1. Run kubeadm init on the control plane
+    - name: A1. Run kubeadm init on the control plane (FIXED- Added port wait for API Server)
       ansible.builtin.shell: |
         kubeadm init \
         --pod-network-cidr={{ pod_network_cidr }} \
         --apiserver-advertise-address={{ ansible_default_ipv4.address }} \
+        --control-plane-endpoint={{ ansible_default_ipv4.address }}:6443 \
         --ignore-preflight-errors=all
       register: init_result
       
-    - name: A1.5. CRITICAL INSTALL - Install Python Kubernetes client for k8s_info module (FIXED- PEP 668)
+    - name: A1.5. CRITICAL INSTALL- Install Python Kubernetes client for k8s_info module (FIXED- PEP 668)
       ansible.builtin.pip:
         name: kubernetes
         state: present
         executable: pip3
-        # FIX: Pass the flag to bypass the 'externally-managed-environment' error
         extra_args: --break-system-packages 
       when: init_result is success
       
@@ -204,7 +204,6 @@
     # (Fixes Calico CNI failure)
     # ----------------------------------------------------------------------
     - name: A2. Wait for API Server Pod to be running before CNI install
-      # This task requires the 'kubernetes' Python library installed in A1.5
       kubernetes.core.k8s_info:
         api_version: v1
         kind: Pod
