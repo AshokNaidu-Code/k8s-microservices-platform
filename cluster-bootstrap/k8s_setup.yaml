@@ -14,7 +14,7 @@
     # ----------------------------------------------------------------------
     # A. CRITICAL RESILIENCE FIXES (Must run first)
     # ----------------------------------------------------------------------
-    - name: A.0. CRITICAL WAIT - Wait for SSH Connection to be stable on all nodes (Fixes Unreachable)
+    - name: 'A.0. CRITICAL WAIT: Wait for SSH Connection to be stable on all nodes (Fixes Unreachable)'
       ansible.builtin.wait_for_connection:
         timeout: 300
         
@@ -26,8 +26,8 @@
           nameserver 8.8.4.4
         create: yes
         marker: "# {mark} ANSIBLE MANAGED BLOCK - CRITICAL DNS FIX"
-      # Using inventory_hostname to ensure compatibility with group names
-      when: inventory_hostname in groups['control_plane'] or inventory_hostname in groups['workers']
+      # FIX: Changed groups['workers'] to groups['worker_nodes'] to match your inventory setup.
+      when: inventory_hostname in groups['control_plane'] or inventory_hostname in groups['worker_nodes']
 
     - name: A.2. Update apt cache
       ansible.builtin.apt:
@@ -35,9 +35,9 @@
         cache_valid_time: 3600
 
     # ----------------------------------------------------------------------
-    # B. Install Container Runtime (Docker, containerd, runc)
+    # B. Install Container Runtime, Kube Tools, and PIP
     # ----------------------------------------------------------------------
-    - name: B1. Install Docker, containerd, and Runc (Critical Fix for Kubelet Crash)
+    - name: B1. Install Docker, containerd, Runc, and python3-pip
       ansible.builtin.apt:
         name: 
           - docker.io
@@ -45,6 +45,7 @@
           - runc
           - apt-transport-https
           - ca-certificates
+          - python3-pip # <--- NEW: Required for the kubernetes Python library
         state: present
 
     - name: B2. Ensure Docker is running and enabled
@@ -175,7 +176,7 @@
     # ----------------------------------------------------------------------
     # A. Kubeadm Init & Reset
     # ----------------------------------------------------------------------
-    - name: A.0. CRITICAL RESET - Reset Kubernetes cluster before init (Fixes rc=1 failure)
+    - name: A.0. CRITICAL RESET- Reset Kubernetes cluster before init (Fixes rc=1 failure)
       ansible.builtin.command: kubeadm reset -f
       changed_when: true
       ignore_errors: yes
@@ -187,28 +188,32 @@
         --apiserver-advertise-address={{ ansible_default_ipv4.address }} \
         --ignore-preflight-errors=all
       register: init_result
-      # warn: false is supported in shell module only
+      
+    - name: A1.5. CRITICAL INSTALL- Install Python Kubernetes client for k8s_info module
+      ansible.builtin.pip:
+        name: kubernetes
+        state: present
+        executable: pip3 # Ensures the correct pip version is used
+      # IMPORTANT: This must run before A2
+      when: init_result is success # Only needed if init succeeded
       
     # ----------------------------------------------------------------------
     # A2. CRITICAL WAIT: Wait for the API server static pod to become ready
     # (Fixes Calico CNI failure)
     # ----------------------------------------------------------------------
     - name: A2. Wait for API Server Pod to be running before CNI install
-      # This task requires the 'kubernetes.core' collection
+      # This task requires the 'kubernetes' Python library installed in A1.5
       kubernetes.core.k8s_info:
         api_version: v1
         kind: Pod
         namespace: kube-system
-        # The API server pod name usually starts with kube-apiserver-
         field_selectors:
           - metadata.name=kube-apiserver
-        # Wait until the pod is reported as Running
         wait: yes
         wait_timeout: 300 # Wait up to 5 minutes (300 seconds)
         wait_condition:
           type: Ready
           status: "True"
-      # IMPORTANT: Must run as the non-sudo user to use the kubeconfig
       become_user: "{{ ansible_user }}"
       when: init_result is success
 
@@ -261,7 +266,7 @@
 # PLAY 3: Join Worker Nodes to the Cluster
 # ==============================================================================
 - name: 03 - Join Worker Nodes
-  hosts: workers
+  hosts: worker_nodes # <--- Uses 'worker_nodes'
   become: yes
   tasks:
     - name: A. Wait for Control Plane to finish initialization
