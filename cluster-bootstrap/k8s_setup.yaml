@@ -104,6 +104,15 @@
     # ----------------------------------------------------------------------
     # D. Configure Containerd to use 'systemd' Cgroup Driver
     # ----------------------------------------------------------------------
+    - name: D0. CRITICAL FIX Disable and remove all swap (Required by Kubelet)
+      ansible.builtin.shell: |
+        swapoff -a # Turn off all swap immediately
+        # Comment out all swap entries in /etc/fstab to persist the change
+        sed -i '/\sswap\s/ s/^\(.*\)$/#\1/g' /etc/fstab
+      args:
+        warn: no
+      changed_when: true
+
     - name: D1. Ensure Kubernetes prerequisites are met
       copy:
         content: |
@@ -177,22 +186,22 @@
     # ----------------------------------------------------------------------
     # A. Kubeadm Init & Setup
     # ----------------------------------------------------------------------
-    - name: A.0. CRITICAL RESET- Reset Kubernetes cluster before init (Fixes rc=1 failure)
+    - name: A.0. CRITICAL RESET Reset Kubernetes cluster before init (Fixes rc=1 failure)
       ansible.builtin.command: kubeadm reset -f
       changed_when: true
       ignore_errors: yes
 
-    - name: A1. Run kubeadm init on the control plane (FIXED- Added CRI socket for Containerd)
+    - name: A1. Run kubeadm init on the control plane (FIXED Added CRI socket for Containerd)
       ansible.builtin.shell: |
         kubeadm init \
         --pod-network-cidr={{ pod_network_cidr }} \
         --apiserver-advertise-address={{ ansible_default_ipv4.address }} \
         --control-plane-endpoint={{ ansible_default_ipv4.address }}:6443 \
-        --cri-socket=/run/containerd/containerd.sock \
+        --cri-socket=unix:///run/containerd/containerd.sock \
         --ignore-preflight-errors=all
       register: init_result
       
-    - name: A1.5. CRITICAL INSTALL- Install Python Kubernetes client for k8s_info module (FIXED- PEP 668)
+    - name: A1.5. CRITICAL INSTALL Install Python Kubernetes client for k8s_info module (FIXED PEP 668)
       ansible.builtin.pip:
         name: kubernetes
         state: present
@@ -200,7 +209,7 @@
         extra_args: --break-system-packages 
       when: init_result is success
       
-    - name: A1.7. CRITICAL WAIT- Wait for API Server port (6443) to open (FIXED Connection Refused)
+    - name: A1.7. CRITICAL WAIT Wait for API Server port (6443) to open (FIXED Connection Refused)
       ansible.builtin.wait_for:
         host: "{{ ansible_default_ipv4.address }}"
         port: 6443
@@ -231,7 +240,7 @@
         mode: '0644'
       when: init_result is success
 
-    - name: A1.95. CRITICAL WAIT- Wait for connection to stabilize after kubeconfig setup (Fixes UNREACHABLE!)
+    - name: A1.95. CRITICAL WAIT Wait for connection to stabilize after kubeconfig setup (Fixes UNREACHABLE!)
       ansible.builtin.wait_for_connection:
         timeout: 60
       when: init_result is success
@@ -240,7 +249,7 @@
     # A2. CRITICAL WAIT: Wait for the API server static pod to become ready
     # (Fixes Calico CNI failure)
     # ----------------------------------------------------------------------
-    - name: A2. Wait for API Server Pod to be running before CNI install (FIXED- SSL Cert error)
+    - name: A2. Wait for API Server Pod to be running before CNI install (FIXED SSL Cert error)
       kubernetes.core.k8s_info:
         api_version: v1
         kind: Pod
