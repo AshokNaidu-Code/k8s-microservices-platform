@@ -182,12 +182,13 @@
       changed_when: true
       ignore_errors: yes
 
-    - name: A1. Run kubeadm init on the control plane (FIXED- Added port wait for API Server)
+    - name: A1. Run kubeadm init on the control plane (FIXED- Added CRI socket for Containerd)
       ansible.builtin.shell: |
         kubeadm init \
         --pod-network-cidr={{ pod_network_cidr }} \
         --apiserver-advertise-address={{ ansible_default_ipv4.address }} \
         --control-plane-endpoint={{ ansible_default_ipv4.address }}:6443 \
+        --cri-socket=/run/containerd/containerd.sock \
         --ignore-preflight-errors=all
       register: init_result
       
