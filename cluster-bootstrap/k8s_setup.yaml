@@ -14,7 +14,7 @@
     # ----------------------------------------------------------------------
     # A. CRITICAL RESILIENCE FIXES (Must run first)
     # ----------------------------------------------------------------------
-    - name: A.0. CRITICAL WAIT: Wait for SSH Connection to be stable on all nodes (Fixes Unreachable)
+    - name: A.0. CRITICAL WAIT - Wait for SSH Connection to be stable on all nodes (Fixes Unreachable)
       ansible.builtin.wait_for_connection:
         timeout: 300
         
@@ -175,7 +175,7 @@
     # ----------------------------------------------------------------------
     # A. Kubeadm Init & Reset
     # ----------------------------------------------------------------------
-    - name: A.0. CRITICAL RESET: Reset Kubernetes cluster before init (Fixes rc=1 failure)
+    - name: A.0. CRITICAL RESET - Reset Kubernetes cluster before init (Fixes rc=1 failure)
       ansible.builtin.command: kubeadm reset -f
       changed_when: true
       ignore_errors: yes
