@@ -1,0 +1,41 @@
+name: Kubernetes Control Plane Diagnostics
+
+# Run this workflow manually from the Actions tab
+on:
+  workflow_dispatch:
+
+jobs:
+  run-ansible-diagnostics:
+    runs-on: ubuntu-latest
+    
+    # Define the environment variables for Ansible connection
+    env:
+      ANSIBLE_HOST_KEY_CHECKING: False
+
+    steps:
+      - name: Checkout repository code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Install Ansible
+        run: |
+          pip install ansible
+
+      - name: Configure SSH Key
+        # Set up the SSH private key needed to connect to the AWS instance
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          # IMPORTANT: You MUST set this secret in your GitHub repository settings
+          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+
+      - name: Run K8s Diagnostics Playbook
+        # We use the full path to the playbook and inventory
+        run: |
+          ansible-playbook -i cluster-bootstrap/inventory.ini cluster-bootstrap/k8s_post_init_diag.yaml \
+          -u ubuntu \
+          -e "ansible_python_interpreter=/usr/bin/python3" \
+          -e "ansible_ssh_extra_args='-o StrictHostKeyChecking=no'"

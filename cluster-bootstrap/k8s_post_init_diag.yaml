@@ -1,0 +1,72 @@
+---
+- name: 05 - DIAGNOSE CONTROL PLANE API SERVER FAILURE (POST-INIT)
+  hosts: control_plane
+  become: yes
+  gather_facts: no
+  
+  tasks:
+    # ----------------------------------------------------------------------
+    # A. Get Kubelet System Logs
+    # ----------------------------------------------------------------------
+    - name: A. Get the last 50 lines of Kubelet journalctl logs
+      ansible.builtin.shell: |
+        journalctl -u kubelet.service --no-pager -n 50
+      register: kubelet_log_output
+      changed_when: false
+
+    - name: B. Output Kubelet Logs
+      ansible.builtin.debug:
+        msg: |
+          ========= KUBELET SYSTEM LOGS (LAST 50 LINES) =========
+          {{ kubelet_log_output.stdout }}
+          ======================================================
+
+    # ----------------------------------------------------------------------
+    # C. Get ETCD Container Logs (The REAL next error)
+    # ----------------------------------------------------------------------
+    - name: C. Find the ETCD container ID
+      ansible.builtin.shell: |
+          crictl ps -a --name 'etcd-ip' -q | head -n 1
+      register: etcd_container_id
+      changed_when: false
+      ignore_errors: yes
+
+    - name: D. Get the logs for the ETCD container
+      ansible.builtin.shell: |
+          crictl logs --since 30m {{ etcd_container_id.stdout }} | tail -n 50
+      register: etcd_log_output
+      when: etcd_container_id.stdout is defined and etcd_container_id.stdout != ""
+      changed_when: false
+      ignore_errors: yes
+
+    - name: E. Output ETCD Container Logs
+      ansible.builtin.debug:
+        msg: |
+          ========= ETCD CONTAINER LOGS (LAST 50 LINES) =========
+          {{ etcd_log_output.stdout | default("--- ETCD Container not found or logs failed to retrieve. ---") }}
+          =======================================================
+      when: etcd_container_id.stdout is defined and etcd_container_id.stdout != ""
+
+    # ----------------------------------------------------------------------
+    # F. Attempt to find API Server Pod Logs (Skipped for now)
+    # ----------------------------------------------------------------------
+    - name: F. Find the API Server Static Pod log file
+      ansible.builtin.shell: |
+          ls -t /var/log/pods/*kube-apiserver*.log 2>/dev/null | head -1
+      register: apiserver_log_path
+      changed_when: false
+      ignore_errors: yes
+
+    - name: G. Display the LAST 50 lines of API Server logs (if found)
+      ansible.builtin.shell: |
+          cat {{ apiserver_log_path.stdout | default("/dev/null") }} | tail -50
+      register: apiserver_log_output
+      when: apiserver_log_path.stdout is defined and apiserver_log_path.stdout != ""
+
+    - name: H. Output API Server Logs (if found)
+      ansible.builtin.debug:
+        msg: |
+          ========= KUBE API SERVER LOGS (LAST 50 LINES) =========
+          {{ apiserver_log_output.stdout | default("--- Pod logs not found (Kubelet is likely crashing) ---") }}
+          =======================================================
+      when: apiserver_log_path.stdout is defined and apiserver_log_path.stdout != ""

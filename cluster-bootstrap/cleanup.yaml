@@ -1,0 +1,36 @@
+---
+# This playbook cleans up any existing Kubernetes installation on all nodes.
+# It is designed to be run before a fresh deployment when errors have occurred.
+
+- name: 01 - Run kubeadm reset on all nodes
+  hosts: all
+  become: yes
+  tasks:
+    - name: Reset kubeadm state
+      ansible.builtin.shell: |
+        kubeadm reset -f
+      ignore_errors: true
+      # The comment about 'ignore_errors' is moved here to avoid YAML/Jinja conflicts.
+
+    - name: Clean up CNI configuration
+      ansible.builtin.file:
+        path: /etc/cni/net.d
+        state: absent
+
+    - name: Remove Kubernetes system files
+      ansible.builtin.file:
+        path: /var/lib/kubelet
+        state: absent
+      
+    - name: Remove .kube directory for users
+      ansible.builtin.file:
+        path: /home/{{ ansible_user }}/.kube
+        state: absent
+      ignore_errors: true
+
+    - name: Remove remaining Docker containers (to clear static pods)
+      ansible.builtin.shell: |
+        # Use xargs -r to prevent 'docker rm' from running if no containers are found.
+        docker ps -aq | xargs -r docker rm -f
+      ignore_errors: true
+      when: ansible_os_family == "Debian" or ansible_os_family == "RedHat"

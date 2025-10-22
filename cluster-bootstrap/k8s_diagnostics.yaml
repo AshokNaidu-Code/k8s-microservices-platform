@@ -1,0 +1,31 @@
+---
+- name: 04 - DIAGNOSE CONTROL PLANE API SERVER FAILURE
+  hosts: control_plane
+  become: yes
+  tasks:
+    - name: A. Check Kubelet Service Status
+      ansible.builtin.command: systemctl status kubelet
+      register: kubelet_status
+      ignore_errors: yes
+
+    - name: B. Display Kubelet Service Status
+      ansible.builtin.debug:
+        msg: "Kubelet Status Output:\n{{ kubelet_status.stdout }}\n{{ kubelet_status.stderr }}"
+
+    - name: C. Check Kubelet Service Logs (Last 100 lines)
+      ansible.builtin.command: journalctl -u kubelet --no-pager -n 100
+      register: kubelet_log
+      ignore_errors: yes
+
+    - name: D. Display Kubelet Service Logs
+      ansible.builtin.debug:
+        msg: "Kubelet Logs Output:\n{{ kubelet_log.stdout }}"
+
+    - name: E. List Static Pod Manifests (should show apiserver, controller, scheduler, etcd)
+      ansible.builtin.command: ls -l /etc/kubernetes/manifests/
+      register: static_pods
+      ignore_errors: yes
+
+    - name: F. Display Static Pod Manifests
+      ansible.builtin.debug:
+        msg: "Static Pod Manifests:\n{{ static_pods.stdout }}"

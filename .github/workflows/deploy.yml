@@ -1,0 +1,147 @@
+# # .github/workflows/deploy.yml
+
+# name: K8s Platform Deployment
+
+# on:
+#   push:
+#     branches:
+#       - main
+#     paths:
+#       - 'infrastructure/**'
+#       - '.github/workflows/deploy.yml'
+
+# jobs:
+#   # -------------------------------------------------------------------
+#   # Job 1: Provision Infrastructure with Terraform
+#   # -------------------------------------------------------------------
+#   provision_infra:
+#     runs-on: ubuntu-latest
+#     steps:
+#       - name: Checkout Code
+#         uses: actions/checkout@v4
+
+#       - name: Configure AWS Credentials
+#         uses: aws-actions/configure-aws-credentials@v4
+#         with:
+#           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+#           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+#           aws-region: us-east-1 # Change to your desired region
+
+#       - name: Setup Terraform
+#         uses: hashicorp/setup-terraform@v3
+#         with:
+#           terraform_version: 1.8.0 # Use a stable version
+
+#       - name: Terraform Init
+#         id: init
+#         run: terraform init -chdir=infrastructure
+
+#       - name: Terraform Apply
+#         id: apply
+#         run: |
+#           terraform apply -auto-approve \
+#             -chdir=infrastructure \
+#             -var "ssh_public_key=$(cat k8s_key.pub)"
+#         env:
+#           # Assume k8s_key.pub is generated in a previous step or committed
+#           K8S_KEY_PUB_CONTENT: ${{ secrets.K8S_SSH_PUB_KEY }}
+
+#       - name: Output IPs for next stage
+#         id: output
+#         run: |
+#           # Use 'terraform output' to get IPs
+#           CP_IP=$(terraform output -raw control_plane_ip -chdir=infrastructure)
+#           WORKER_IPS=$(terraform output -json worker_ips -chdir=infrastructure | jq -r 'join(",")')
+          
+#           echo "control_plane_ip=$CP_IP" >> $GITHUB_OUTPUT
+#           echo "worker_ips=$WORKER_IPS" >> $GITHUB_OUTPUT
+
+#     outputs:
+#       control_plane_ip: ${{ steps.output.outputs.control_plane_ip }}
+#       worker_ips: ${{ steps.output.outputs.worker_ips }}
+
+
+# # -------------------------------------------------------------------
+#   # Job 2: Bootstrap Cluster with Ansible
+#   # -------------------------------------------------------------------
+#   bootstrap_cluster:
+#     needs: provision_infra
+#     runs-on: ubuntu-latest
+#     steps:
+#       - name: Checkout Code
+#         uses: actions/checkout@v4
+
+#       - name: Setup SSH Key for Ansible
+#         run: |
+#           echo "${{ secrets.K8S_SSH_KEY }}" > k8s_key
+#           chmod 600 k8s_key
+#           eval $(ssh-agent -s)
+#           ssh-add k8s_key
+#         # NOTE: Using ssh-agent for connection. Requires remote host public key to be trusted.
+
+#       - name: Install Ansible
+#         run: sudo apt-get update && sudo apt-get install -y ansible
+
+#       - name: Generate Dynamic Ansible Inventory
+#         id: generate_inventory
+#         run: |
+#           CP_IP="${{ needs.provision_infra.outputs.control_plane_ip }}"
+#           WORKER_IPS=$(echo "${{ needs.provision_infra.outputs.worker_ips }}" | tr ',' ' ')
+
+#           echo "[control_plane]" > cluster-bootstrap/inventory.ini
+#           echo "$CP_IP ansible_user=ubuntu" >> cluster-bootstrap/inventory.ini # Adjust user if not 'ubuntu'
+#           echo "" >> cluster-bootstrap/inventory.ini
+#           echo "[workers]" >> cluster-bootstrap/inventory.ini
+#           for ip in $WORKER_IPS; do
+#             echo "$ip ansible_user=ubuntu" >> cluster-bootstrap/inventory.ini
+#           done
+
+#       - name: Run Ansible Playbook (Cluster Setup)
+#         run: |
+#           # Use '-i' for inventory, '--private-key' for key, and '-f 10' for forks
+#           ansible-playbook -i cluster-bootstrap/inventory.ini \
+#             cluster-bootstrap/k8s_setup.yaml \
+#             --private-key k8s_key \
+#             -f 10
+
+
+# # -------------------------------------------------------------------
+#   # Job 3: Deploy Applications and Monitoring
+#   # -------------------------------------------------------------------
+#   deploy_services:
+#     needs: [bootstrap_cluster]
+#     runs-on: ubuntu-latest
+#     steps:
+#       - name: Checkout Code
+#         uses: actions/checkout@v4
+
+#       - name: Setup Kubeconfig
+#         # This step retrieves the Kubeconfig from the Control Plane node 
+#         # using the SSH key and saves it for kubectl/helm use.
+#         run: |
+#           CP_IP="${{ needs.provision_infra.outputs.control_plane_ip }}"
+#           scp -i k8s_key -o StrictHostKeyChecking=no ubuntu@$CP_IP:~/.kube/config kubeconfig.yaml
+#           export KUBECONFIG=$(pwd)/kubeconfig.yaml
+#           echo "KUBECONFIG=$(pwd)/kubeconfig.yaml" >> $GITHUB_ENV
+#         env:
+#           K8S_SSH_KEY: ${{ secrets.K8S_SSH_KEY }} # Used for SCP
+
+#       - name: Install Helm
+#         uses: azure/setup-helm@v4
+
+#       - name: Deploy Monitoring Stack (Prometheus/Grafana)
+#         run: |
+#           helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+#           helm repo update
+#           helm install prometheus-stack prometheus-community/kube-prometheus-stack \
+#             -f monitoring/kube-prometheus-values.yaml \
+#             --namespace monitoring \
+#             --create-namespace
+
+#       - name: Deploy Service-A
+#         run: |
+#           kubectl apply -f services/service-A/deployment.yaml
+#           kubectl apply -f services/service-A/servicemonitor.yaml
+#           # Add ingress and HPA manifests here as well
+#           # kubectl apply -f ingress/ingress-controller.yaml 
+#           # kubectl apply -f autoscaling/hpa-service-a.yaml

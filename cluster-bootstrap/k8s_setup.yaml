@@ -1,0 +1,343 @@
+---
+# ==============================================================================
+# PLAY 1: Install Common Prerequisites on ALL Nodes (Control Plane & Workers)
+# ==============================================================================
+- name: 01 - Install Prerequisites (Docker, Kube Tools, Configure Cgroup)
+  hosts: all
+  become: yes
+  gather_facts: yes
+  vars:
+    # Set CNI network range (Calico default)
+    pod_network_cidr: "10.0.0.0/16"
+  
+  tasks:
+    # ----------------------------------------------------------------------
+    # A. CRITICAL FIXES (Must run first: DNS and APT)
+    # ----------------------------------------------------------------------
+    - name: A.1. CRITICAL FIX - Ensure DNS is working by using Google Public DNS
+      ansible.builtin.blockinfile:
+        path: /etc/resolv.conf
+        block: |
+          nameserver 8.8.8.8
+          nameserver 8.8.4.4
+        marker: "# ANSIBLE MANAGED BLOCK FOR DNS"
+        create: yes
+      when: inventory_hostname in groups['control_plane'] or inventory_hostname in groups['worker_nodes']
+
+    - name: A.2. CRITICAL FIX - Restart systemd-resolved to apply new DNS settings immediately
+      ansible.builtin.systemd:
+        name: systemd-resolved
+        state: restarted
+      ignore_errors: yes 
+      when: inventory_hostname in groups['control_plane'] or inventory_hostname in groups['worker_nodes']
+
+    - name: A.3. Update apt cache (Should succeed now that DNS is fixed)
+      ansible.builtin.apt:
+        update_cache: yes
+        cache_valid_time: 3600
+
+    # ----------------------------------------------------------------------
+    # B. Install Container Runtime (Docker, containerd, runc)
+    # ----------------------------------------------------------------------
+    - name: B1. Install Docker, containerd, and Runc
+      ansible.builtin.apt:
+        name:
+          - docker.io
+          - containerd
+          - runc
+          - apt-transport-https
+          - ca-certificates
+        state: present
+
+    # ----------------------------------------------------------------------
+    # B.2 Install Kubernetes Repositories and Packages (Fixed Variable Access)
+    # ----------------------------------------------------------------------
+    - name: B2a. Ensure /etc/apt/keyrings directory exists
+      ansible.builtin.file:
+        path: /etc/apt/keyrings
+        state: directory
+        mode: '0755'
+
+    - name: B2b. Download Kubernetes GPG key to a fixed location on localhost
+      ansible.builtin.shell: |
+        curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.29/deb/Release.key | gpg --dearmor -o /tmp/k8s-keyring.gpg
+      delegate_to: localhost
+      run_once: yes
+      become: no
+      changed_when: true
+      # This task downloads the key to /tmp/k8s-keyring.gpg on the control machine.
+
+    - name: B2c. Copy downloaded GPG key from localhost to all target hosts
+      ansible.builtin.copy:
+        src: /tmp/k8s-keyring.gpg # Using the fixed local path
+        dest: /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+        mode: '0644'
+      # The 'when' condition is removed as the download in B2b is designed to always report changed.
+
+    - name: B3. Add Kubernetes repository to sources list
+      ansible.builtin.apt_repository:
+        repo: deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.29/deb/ /
+        state: present
+        update_cache: yes
+        filename: kubernetes
+    
+    - name: B5. Install kubelet, kubeadm, and kubectl
+      ansible.builtin.apt:
+        name:
+          - kubelet
+          - kubeadm
+          - kubectl
+        state: present
+
+    - name: B6. Hold kubelet, kubeadm, and kubectl to prevent auto-updates
+      ansible.builtin.dpkg_selections:
+        name: "{{ item }}"
+        selection: hold
+      loop:
+        - kubelet
+        - kubeadm
+        - kubectl
+
+    # ----------------------------------------------------------------------
+    # C. Configure System and Cgroup Driver
+    # ----------------------------------------------------------------------
+    - name: C1. Disable swap (Required K8s prerequisite)
+      ansible.builtin.shell: |
+        swapoff -a
+        sed -i '/ swap / s/^\(.*\)$/#\1/g' /etc/fstab
+      
+    - name: C.0. Load br_netfilter and overlay modules
+      community.general.modprobe:
+        name: "{{ item }}"
+        state: present
+      with_items:
+        - br_netfilter
+        - overlay
+
+    - name: C2. Apply sysctl parameters
+      ansible.posix.sysctl:
+        name: "{{ item }}"
+        value: '1'
+        state: present
+        reload: yes
+      with_items:
+        - net.bridge.bridge-nf-call-iptables
+        - net.bridge.bridge-nf-call-ip6tables
+        - net.ipv4.ip_forward
+
+    # D. Configure Firewall
+    - name: D. Ensure UFW (firewall) is disabled (to prevent internal connectivity issues)
+      ansible.builtin.ufw:
+        state: disabled
+      ignore_errors: yes
+
+    # E. Configure docker cgroup driver to systemd
+    - name: E. Configure docker cgroup driver to systemd
+      ansible.builtin.copy:
+        content: |
+          {
+            "exec-opts": ["native.cgroupdriver=systemd"],
+            "log-driver": "json-file",
+            "log-opts": {
+              "max-size": "100m"
+            },
+            "storage-driver": "overlay2"
+          }
+        dest: /etc/docker/daemon.json
+        mode: '0644'
+      notify: Restart docker
+
+    - name: F. Force Kubelet to use systemd cgroup driver
+      ansible.builtin.lineinfile:
+        path: /etc/default/kubelet
+        line: 'KUBELET_EXTRA_ARGS="--cgroup-driver=systemd"'
+        create: yes
+        owner: root
+        group: root
+        mode: '0644'
+      notify: Restart Kubelet
+
+    - name: G. Enable and restart kubelet service
+      ansible.builtin.systemd:
+        name: kubelet
+        state: restarted
+        enabled: yes
+
+# ==============================================================================
+# HANDLERS (DEFINED ONCE AT THE END OF THE PLAYBOOK)
+# ==============================================================================
+  handlers:
+    - name: Restart docker
+      ansible.builtin.systemd:
+        name: docker
+        state: restarted
+
+    - name: Restart Kubelet
+      ansible.builtin.systemd:
+        name: kubelet
+        state: restarted
+        daemon_reload: yes
+
+# ==============================================================================
+# PLAY 2: Initialize Control Plane Node
+# ==============================================================================
+- name: 02 - Initialize Control Plane
+  hosts: control_plane
+  gather_facts: yes
+  become: yes
+  vars:
+    pod_network_cidr: "10.0.0.0/16"
+
+  tasks:
+    - name: A. DETERMINE PUBLIC IP of the Control Plane (CRITICAL FOR SAN)
+      # We use the inventory hostname which is the public IP
+      ansible.builtin.set_fact:
+        public_ip: "{{ inventory_hostname }}"
+
+    # ----------------------------------------------------------------------
+    # B. Kubeadm Init Cleanup and Restart
+    # ----------------------------------------------------------------------
+    - name: B0. Stop Kubelet and Docker
+      ansible.builtin.systemd:
+        name: "{{ item }}"
+        state: stopped
+      loop:
+        - kubelet
+        - docker
+      ignore_errors: yes
+
+    - name: B0a. Reset Kubernetes cluster fully
+      ansible.builtin.command: kubeadm reset -f
+      changed_when: true
+      ignore_errors: yes
+
+    - name: B0b. Clean up Kubernetes and Kubelet directories
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - /etc/kubernetes
+        - /var/lib/kubelet
+        - /var/lib/etcd
+      ignore_errors: yes
+      
+    - name: B0c. Restart Docker and Kubelet (to pick up fresh config)
+      ansible.builtin.systemd:
+        name: "{{ item }}"
+        state: started
+        enabled: yes
+      loop:
+        - docker
+        - kubelet
+
+    - name: B1. Run kubeadm init on the control plane (Includes Public IP in SANs)
+      ansible.builtin.shell: |
+        kubeadm init \
+        --pod-network-cidr={{ pod_network_cidr }} \
+        --apiserver-advertise-address={{ ansible_default_ipv4.address }} \
+        --apiserver-cert-extra-sans={{ public_ip }} \
+        --ignore-preflight-errors=all
+      register: init_result
+      changed_when: true
+
+    - name: B2. Pause for 30 seconds to allow API server to fully stabilize
+      ansible.builtin.pause:
+        seconds: 30
+
+    # ----------------------------------------------------------------------
+    # C. Configure Kubeconfig
+    # ----------------------------------------------------------------------
+    - name: C1. Create .kube directory for the user ({{ ansible_user }})
+      ansible.builtin.file:
+        path: /home/{{ ansible_user }}/.kube
+        state: directory
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        mode: '0755'
+
+    - name: C2. Copy admin.conf to user's .kube directory and set ownership
+      ansible.builtin.copy:
+        src: /etc/kubernetes/admin.conf
+        dest: /home/{{ ansible_user }}/.kube/config
+        remote_src: yes
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        mode: '0644'
+
+    # C3. Also copy to root's directory for easier troubleshooting as root
+    - name: C3. Copy admin.conf to root user's .kube directory
+      ansible.builtin.copy:
+        src: /etc/kubernetes/admin.conf
+        dest: /root/.kube/config
+        remote_src: yes
+        owner: root
+        group: root
+        mode: '0600'
+
+
+    # ----------------------------------------------------------------------
+    # D. Install CNI (Calico)
+    # ----------------------------------------------------------------------
+    - name: D1. Install Calico CNI
+      ansible.builtin.command: >
+        kubectl apply -f https://raw.githubusercontent.com/projectcalico/calico/v3.27.0/manifests/calico.yaml
+      become_user: "{{ ansible_user }}"
+      register: calico_install_output
+      changed_when: true
+
+    # ----------------------------------------------------------------------
+    # E. Retrieve Join Command for Workers
+    # ----------------------------------------------------------------------
+    - name: E1. Generate and store the join command for worker nodes (Token TTL 0)
+      ansible.builtin.shell:
+        cmd: >
+          kubeadm token create --print-join-command --ttl 0
+      register: worker_join_command
+      changed_when: false
+
+    - name: E2. Store the join command securely for the next play
+      ansible.builtin.set_fact:
+        k8s_join_command: "{{ worker_join_command.stdout }}"
+
+# ==============================================================================
+# PLAY 3: Join Worker Nodes to the Cluster
+# ==============================================================================
+- name: 03 - Join Worker Nodes
+  hosts: worker_nodes
+  become: yes
+  tasks:
+    # ----------------------------------------------------------------------
+    # A. Reset Kubernetes cluster on Worker Nodes (Ensure clean state)
+    # ----------------------------------------------------------------------
+    - name: A.0. Reset Kubernetes cluster on worker node if it exists
+      ansible.builtin.command: kubeadm reset -f
+      changed_when: true
+      ignore_errors: yes
+
+    # ----------------------------------------------------------------------
+    # B. CRITICAL FIX: Restart Kubelet to guarantee cgroup config is loaded
+    # ----------------------------------------------------------------------
+    - name: B.1. Ensure Kubelet is restarted to pick up systemd cgroup driver config
+      ansible.builtin.systemd:
+        name: kubelet
+        state: restarted
+        enabled: yes
+        daemon_reload: yes
+
+    # ----------------------------------------------------------------------
+    # C. Wait for Control Plane to finish initialization
+    # ----------------------------------------------------------------------
+    - name: C. Wait for Control Plane to finish initialization
+      ansible.builtin.wait_for_connection:
+        timeout: 300
+
+    # ----------------------------------------------------------------------
+    # D. Join the cluster
+    # ----------------------------------------------------------------------
+    - name: D. Join the cluster
+      ansible.builtin.shell: >
+        {{ hostvars[groups['control_plane'][0]]['k8s_join_command'] }} \
+        --ignore-preflight-errors=all
+      changed_when: true
+      when:
+        - hostvars[groups['control_plane'][0]]['k8s_join_command'] is defined

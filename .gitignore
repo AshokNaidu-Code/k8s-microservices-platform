@@ -1,0 +1,37 @@
+--- General Operating System Files ---
+
+.DS_Store
+Thumbs.db
+
+--- Python / Ansible Environment ---
+
+pycache/
+*.pyc
+venv/
+.venv/
+
+--- Terraform Generated Files ---
+
+Terraform state is critical and should be managed remotely (e.g., S3), never committed.
+
+*.tfstate
+*.tfstate.backup
+.terraform/
+.terraform.lock.hcl
+
+--- Secrets and Keys ---
+
+Never commit private keys!
+
+k8s_key
+k8s_key.pub
+*.pem
+*.key
+
+--- Local Ansible / Execution Artifacts ---
+
+If you are debugging locally, you might generate these
+
+ansible.cfg
+ansible-playbook
+cluster-bootstrap/y

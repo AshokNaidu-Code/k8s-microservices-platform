@@ -1,0 +1,52 @@
+# services/service-A/deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: service-a
+  labels:
+    app: service-a
+    component: microservice
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: service-a
+  template:
+    metadata:
+      labels:
+        app: service-a
+        version: v1.0.0
+    spec:
+      containers:
+      - name: service-a-container
+        image: your-repo/service-a:latest # REPLACE with your container image
+        ports:
+        - name: http-app
+          containerPort: 8080
+        - name: http-metrics
+          containerPort: 9090 # Port for Prometheus metrics
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "128Mi"
+          limits:
+            cpu: "500m"
+            memory: "512Mi"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: service-a-internal
+  labels:
+    app: service-a
+spec:
+  type: ClusterIP
+  selector:
+    app: service-a
+  ports:
+  - name: http-app
+    port: 80
+    targetPort: http-app
+  - name: metrics # Named port for ServiceMonitor
+    port: 9090
+    targetPort: http-metrics

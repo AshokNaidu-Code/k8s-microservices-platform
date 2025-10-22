@@ -1,0 +1,28 @@
+# monitoring/kube-prometheus-values.yaml
+grafana:
+  enabled: true
+  persistence:
+    enabled: true
+    storageClassName: standard # Must match your StorageClass name
+    size: 5Gi
+  adminPassword: your-secure-password-here # CHANGE THIS
+  
+prometheus:
+  prometheusSpec:
+    retention: 7d # Data retention period
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: standard # Must match your StorageClass name
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: 10Gi
+    # Enables scraping based on ServiceMonitor and PodMonitor CRDs
+    serviceMonitorSelector:
+      matchLabels:
+        release: prometheus-stack # Label to match for ServiceMonitors
+
+alertmanager:
+  enabled: true
+  # ... configure notification routes here ...
