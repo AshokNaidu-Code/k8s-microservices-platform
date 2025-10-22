@@ -109,6 +109,7 @@
         swapoff -a # Turn off all swap immediately
         # Comment out all swap entries in /etc/fstab to persist the change
         sed -i '/\sswap\s/ s/^\(.*\)$/#\1/g' /etc/fstab
+      # The invalid 'args: warn: no' block has been completely removed.
       changed_when: true
 
     - name: D1. Ensure Kubernetes prerequisites are met
@@ -189,7 +190,7 @@
       changed_when: true
       ignore_errors: yes
 
-    - name: A1. Run kubeadm init on the control plane (FIXED Added CRI socket for Containerd)
+    - name: A1. Run kubeadm init on the control plane (FIXED Added CRI socket scheme for Containerd)
       ansible.builtin.shell: |
         kubeadm init \
         --pod-network-cidr={{ pod_network_cidr }} \
