@@ -175,7 +175,7 @@
   
   tasks:
     # ----------------------------------------------------------------------
-    # A. Kubeadm Init & Reset
+    # A. Kubeadm Init & Setup
     # ----------------------------------------------------------------------
     - name: A.0. CRITICAL RESET- Reset Kubernetes cluster before init (Fixes rc=1 failure)
       ansible.builtin.command: kubeadm reset -f
@@ -199,6 +199,15 @@
         extra_args: --break-system-packages 
       when: init_result is success
       
+    - name: A1.7. CRITICAL WAIT- Wait for API Server port (6443) to open (FIXED- Connection Refused)
+      ansible.builtin.wait_for:
+        host: "{{ ansible_default_ipv4.address }}"
+        port: 6443
+        delay: 5 # Start checking after 5 seconds
+        timeout: 120 # Wait up to 2 minutes
+        state: started # Wait for the port to be in a listening state
+      when: init_result is success
+
     # ----------------------------------------------------------------------
     # A2. CRITICAL WAIT: Wait for the API server static pod to become ready
     # (Fixes Calico CNI failure)
