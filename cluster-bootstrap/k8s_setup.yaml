@@ -109,8 +109,6 @@
         swapoff -a # Turn off all swap immediately
         # Comment out all swap entries in /etc/fstab to persist the change
         sed -i '/\sswap\s/ s/^\(.*\)$/#\1/g' /etc/fstab
-      args:
-        warn: no
       changed_when: true
 
     - name: D1. Ensure Kubernetes prerequisites are met
