@@ -212,7 +212,7 @@
     # A2. CRITICAL WAIT: Wait for the API server static pod to become ready
     # (Fixes Calico CNI failure)
     # ----------------------------------------------------------------------
-    - name: A2. Wait for API Server Pod to be running before CNI install
+    - name: A2. Wait for API Server Pod to be running before CNI install (FIXED- SSL Cert error)
       kubernetes.core.k8s_info:
         api_version: v1
         kind: Pod
@@ -224,6 +224,7 @@
         wait_condition:
           type: Ready
           status: "True"
+        validate_certs: no # Bypass self-signed cert verification
       become_user: "{{ ansible_user }}"
       when: init_result is success
 
