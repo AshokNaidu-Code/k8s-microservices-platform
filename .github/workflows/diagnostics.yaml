@@ -29,8 +29,8 @@ jobs:
         # Set up the SSH private key needed to connect to the AWS instance
         uses: webfactory/ssh-agent@v0.9.0
         with:
-          # IMPORTANT: You MUST set this secret in your GitHub repository settings
-          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+          # --- CORRECTED SECRET NAME HERE ---
+          ssh-private-key: ${{ secrets.K8S_SSH_KEY }}
 
       - name: Run K8s Diagnostics Playbook
         # We use the full path to the playbook and inventory
