@@ -17,6 +17,10 @@
     - name: 'A.0. CRITICAL WAIT: Wait for SSH Connection to be stable on all nodes (Fixes Unreachable)'
       ansible.builtin.wait_for_connection:
         timeout: 300
+      
+    - name: Set SSH extra args for resiliency
+      set_fact:
+        ansible_ssh_extra_args: "-o StrictHostKeyChecking=no -o ServerAliveInterval=50 -o ServerAliveCountMax=10"
         
     - name: A.1. CRITICAL FIX - Ensure DNS is working by using Google Public DNS
       ansible.builtin.blockinfile:
@@ -114,7 +118,7 @@
 
     - name: D1. Ensure Kubernetes prerequisites are met
       copy:
-        content: |
+        content: |  
           net.bridge.bridge-nf-call-iptables = 1
           net.ipv4.ip_forward = 1
         dest: /etc/sysctl.d/99-kubernetes-cri.conf
@@ -248,7 +252,7 @@
     # A2. CRITICAL WAIT: Wait for the API server static pod to become ready
     # (Fixes Calico CNI failure)
     # ----------------------------------------------------------------------
-    - name: A2. Wait for API Server Pod to be running before CNI install (FIXED SSL Cert error)
+    - name: A2. Wait for API Server Pod to be running before CNI install (with retries)
       kubernetes.core.k8s_info:
         api_version: v1
         kind: Pod
@@ -256,14 +260,11 @@
         field_selectors:
           - metadata.name=kube-apiserver
         wait: yes
-        wait_timeout: 300 # Wait up to 5 minutes (300 seconds)
-        wait_condition:
-          type: Ready
-          status: "True"
-        validate_certs: no # Bypass self-signed cert verification
-      # Running as the user who now has the kubeconfig in ~/.kube/config
-      become_user: "{{ ansible_user }}"
-      when: init_result is success
+        wait_timeout: 300
+      register: result
+      until: result.resources | length > 0 and result.resources[0].status.phase == 'Running'
+      retries: 6
+      delay: 60
 
     # ----------------------------------------------------------------------
     # C. Install CNI (Calico)
