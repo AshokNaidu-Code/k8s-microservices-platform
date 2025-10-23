@@ -42,7 +42,7 @@ jobs:
         run: |
           terraform apply -auto-approve \
             -chdir=infrastructure \
-            -var "ssh_public_key=$(cat k8s_key.pub)"
+            -var "ssh_public_key=$(cat ~/.ssh/id_rsa.pub)"
         env:
           # Assume k8s_key.pub is generated in a previous step or committed
           K8S_KEY_PUB_CONTENT: ${{ secrets.K8S_SSH_PUB_KEY }}
