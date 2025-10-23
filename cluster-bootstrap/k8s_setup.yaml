@@ -249,13 +249,13 @@
     # ----------------------------------------------------------------------
     - name: A2. Wait for API Server Pod to be running before CNI install (FIXED 403 Forbidden)
       ansible.builtin.shell: |
-        # Check if the kube-apiserver static pod is ready.
-        # This runs as 'root' for maximum privilege, bypassing the 403 RBAC issue.
         kubectl get pod -n kube-system -l component=kube-apiserver -o jsonpath='{.items[0].status.containerStatuses[*].ready}' | grep -q 'true'
+      environment:
+        KUBECONFIG: /etc/kubernetes/admin.conf
       register: apiserver_ready_check
       until: apiserver_ready_check.rc == 0
-      retries: 30 # Try 30 times (5 minutes total)
-      delay: 10   # Wait 10 seconds between checks
+      retries: 30
+      delay: 10
       changed_when: false
       when: init_result is success
 
@@ -265,7 +265,8 @@
     - name: C1. Install Calico CNI
       ansible.builtin.command: >
         kubectl apply -f https://raw.githubusercontent.com/projectcalico/calico/v3.27.0/manifests/calico.yaml
-      # Now that we are running 'kubectl' as root, we don't need 'become_user' here either.
+      environment:
+        KUBECONFIG: /etc/kubernetes/admin.conf
       register: calico_install_output
       changed_when: true
       when: init_result is success
@@ -277,9 +278,12 @@
       ansible.builtin.shell:
         cmd: >
           kubeadm token create --print-join-command --ttl 0
+      environment:
+        KUBECONFIG: /etc/kubernetes/admin.conf
       register: worker_join_command
       changed_when: false
       when: init_result is success
+
 
     - name: D2. Store the join command securely for the next play
       ansible.builtin.set_fact:
