@@ -17,10 +17,6 @@
     - name: 'A.0. CRITICAL WAIT: Wait for SSH Connection to be stable on all nodes (Fixes Unreachable)'
       ansible.builtin.wait_for_connection:
         timeout: 300
-      
-    - name: Set SSH extra args for resiliency
-      set_fact:
-        ansible_ssh_extra_args: "-o StrictHostKeyChecking=no -o ServerAliveInterval=50 -o ServerAliveCountMax=10"
         
     - name: A.1. CRITICAL FIX - Ensure DNS is working by using Google Public DNS
       ansible.builtin.blockinfile:
@@ -113,12 +109,11 @@
         swapoff -a # Turn off all swap immediately
         # Comment out all swap entries in /etc/fstab to persist the change
         sed -i '/\sswap\s/ s/^\(.*\)$/#\1/g' /etc/fstab
-      # The invalid 'args: warn: no' block has been completely removed.
       changed_when: true
 
     - name: D1. Ensure Kubernetes prerequisites are met
       copy:
-        content: |  
+        content: |
           net.bridge.bridge-nf-call-iptables = 1
           net.ipv4.ip_forward = 1
         dest: /etc/sysctl.d/99-kubernetes-cri.conf
@@ -233,7 +228,7 @@
         mode: '0755'
       when: init_result is success
 
-    - name: A1.9. Copy admin.conf to user's .kube directory
+    - name: A1.9. Copy admin.conf to user's .kube directory and set ownership
       ansible.builtin.copy:
         src: /etc/kubernetes/admin.conf
         dest: /home/{{ ansible_user }}/.kube/config
@@ -250,21 +245,19 @@
       
     # ----------------------------------------------------------------------
     # A2. CRITICAL WAIT: Wait for the API server static pod to become ready
-    # (Fixes Calico CNI failure)
+    # (FIXED: Replacing k8s_info with resilient kubectl shell loop to bypass 403 Forbidden)
     # ----------------------------------------------------------------------
-    - name: A2. Wait for API Server Pod to be running before CNI install (with retries)
-      kubernetes.core.k8s_info:
-        api_version: v1
-        kind: Pod
-        namespace: kube-system
-        field_selectors:
-          - metadata.name=kube-apiserver
-        wait: yes
-        wait_timeout: 300
-      register: result
-      until: result.resources | length > 0 and result.resources[0].status.phase == 'Running'
-      retries: 6
-      delay: 60
+    - name: A2. Wait for API Server Pod to be running before CNI install (FIXED 403 Forbidden)
+      ansible.builtin.shell: |
+        # Check if the kube-apiserver static pod is ready.
+        # This runs as 'root' for maximum privilege, bypassing the 403 RBAC issue.
+        kubectl get pod -n kube-system -l component=kube-apiserver -o jsonpath='{.items[0].status.containerStatuses[*].ready}' | grep -q 'true'
+      register: apiserver_ready_check
+      until: apiserver_ready_check.rc == 0
+      retries: 30 # Try 30 times (5 minutes total)
+      delay: 10   # Wait 10 seconds between checks
+      changed_when: false
+      when: init_result is success
 
     # ----------------------------------------------------------------------
     # C. Install CNI (Calico)
@@ -272,10 +265,10 @@
     - name: C1. Install Calico CNI
       ansible.builtin.command: >
         kubectl apply -f https://raw.githubusercontent.com/projectcalico/calico/v3.27.0/manifests/calico.yaml
-      # The command must be run as the user who owns the kubeconfig
-      become_user: "{{ ansible_user }}"
+      # Now that we are running 'kubectl' as root, we don't need 'become_user' here either.
       register: calico_install_output
       changed_when: true
+      when: init_result is success
 
     # ----------------------------------------------------------------------
     # D. Retrieve Join Command for Workers
@@ -286,10 +279,12 @@
           kubeadm token create --print-join-command --ttl 0
       register: worker_join_command
       changed_when: false
+      when: init_result is success
 
     - name: D2. Store the join command securely for the next play
       ansible.builtin.set_fact:
         k8s_join_command: "{{ worker_join_command.stdout }}"
+      when: init_result is success
 
 # ==============================================================================
 # PLAY 3: Join Worker Nodes to the Cluster
