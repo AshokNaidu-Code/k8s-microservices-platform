@@ -17,6 +17,10 @@
     - name: 'A.0. CRITICAL WAIT: Wait for SSH Connection to be stable on all nodes (Fixes Unreachable)'
       ansible.builtin.wait_for_connection:
         timeout: 300
+
+    - name: Set SSH extra args for resiliency
+      set_fact:
+        ansible_ssh_extra_args: "-o StrictHostKeyChecking=no -o ServerAliveInterval=50 -o ServerAliveCountMax=10"
         
     - name: A.1. CRITICAL FIX - Ensure DNS is working by using Google Public DNS
       ansible.builtin.blockinfile:
@@ -44,7 +48,7 @@
           - runc
           - apt-transport-https
           - ca-certificates
-          - python3-pip # Required for the kubernetes Python library
+          - python3-pip
         state: present
 
     - name: B2. Ensure Docker is running and enabled
@@ -54,7 +58,7 @@
         enabled: yes
 
     # ----------------------------------------------------------------------
-    # C. Install Kubernetes Repositories and Packages (RESILIENT COPY FIX)
+    # C. Install Kubernetes Repositories and Packages
     # ----------------------------------------------------------------------
     - name: C1. Ensure /etc/apt/keyrings directory exists
       ansible.builtin.file:
@@ -73,7 +77,7 @@
       ansible.builtin.copy:
         src: /tmp/kubernetes-apt-keyring.gpg
         dest: /etc/apt/keyrings/kubernetes-apt-keyring.gpg
-        remote_src: no # Source is on localhost
+        remote_src: no
         mode: '0644'
 
     - name: C4. Add Kubernetes repository to sources list
@@ -101,12 +105,11 @@
         - kubectl
 
     # ----------------------------------------------------------------------
-    # D. Configure Containerd to use 'systemd' Cgroup Driver
+    # D. Configure Containerd and System Prerequisites
     # ----------------------------------------------------------------------
     - name: D0. CRITICAL FIX Disable and remove all swap (Required by Kubelet)
       ansible.builtin.shell: |
-        swapoff -a # Turn off all swap immediately
-        # Comment out all swap entries in /etc/fstab to persist the change
+        swapoff -a
         sed -i '/\sswap\s/ s/^\(.*\)$/#\1/g' /etc/fstab
       changed_when: true
 
@@ -137,7 +140,7 @@
         - net.bridge.bridge-nf-call-ip6tables
         - net.ipv4.ip_forward
 
-    - name: D4. Configure docker cgroup driver to systemd (FIXED)
+    - name: D4. Configure docker cgroup driver to systemd
       ansible.builtin.copy:
         content: |
           {
@@ -157,11 +160,7 @@
         name: kubelet
         state: restarted
         enabled: yes
-      # End of Play 1 tasks
 
-# ==============================================================================
-# HANDLERS (DEFINED ONCE AT THE END OF THE PLAYBOOK)
-# ==============================================================================
   handlers:
     - name: Restart docker
       ansible.builtin.systemd:
@@ -176,19 +175,18 @@
   gather_facts: yes
   become: yes
   vars:
-    # Set CNI network range (Calico default)
     pod_network_cidr: "10.0.0.0/16" 
   
   tasks:
     # ----------------------------------------------------------------------
     # A. Kubeadm Init & Setup
     # ----------------------------------------------------------------------
-    - name: A.0. CRITICAL RESET Reset Kubernetes cluster before init (Fixes rc=1 failure)
+    - name: A.0. CRITICAL RESET Reset Kubernetes cluster before init
       ansible.builtin.command: kubeadm reset -f
       changed_when: true
       ignore_errors: yes
 
-    - name: A1. Run kubeadm init on the control plane (FIXED Added CRI socket scheme for Containerd)
+    - name: A1. Run kubeadm init on the control plane
       ansible.builtin.shell: |
         kubeadm init \
         --pod-network-cidr={{ pod_network_cidr }} \
@@ -198,7 +196,7 @@
         --ignore-preflight-errors=all
       register: init_result
       
-    - name: A1.5. CRITICAL INSTALL Install Python Kubernetes client for k8s_info module (FIXED PEP 668)
+    - name: A1.5. CRITICAL INSTALL Install Python Kubernetes client
       ansible.builtin.pip:
         name: kubernetes
         state: present
@@ -206,18 +204,15 @@
         extra_args: --break-system-packages 
       when: init_result is success
       
-    - name: A1.7. CRITICAL WAIT Wait for API Server port (6443) to open (FIXED Connection Refused)
+    - name: A1.7. CRITICAL WAIT Wait for API Server port (6443) to open
       ansible.builtin.wait_for:
         host: "{{ ansible_default_ipv4.address }}"
         port: 6443
-        delay: 5 # Start checking after 5 seconds
-        timeout: 120 # Wait up to 2 minutes
-        state: started # Wait for the port to be in a listening state
+        delay: 5
+        timeout: 120
+        state: started
       when: init_result is success
 
-    # ----------------------------------------------------------------------
-    # A1.8/A1.9. CRITICAL FIX: Configure Kubeconfig for Ansible user (Fixes 401 Unauthorized)
-    # ----------------------------------------------------------------------
     - name: A1.8. Create .kube directory for the user
       ansible.builtin.file:
         path: /home/{{ ansible_user }}/.kube
@@ -227,7 +222,7 @@
         mode: '0755'
       when: init_result is success
 
-    - name: A1.9. Copy admin.conf to user's .kube directory and set ownership
+    - name: A1.9. Copy admin.conf to user's .kube directory
       ansible.builtin.copy:
         src: /etc/kubernetes/admin.conf
         dest: /home/{{ ansible_user }}/.kube/config
@@ -237,32 +232,34 @@
         mode: '0644'
       when: init_result is success
 
-    - name: A1.95. CRITICAL WAIT Wait for connection to stabilize after kubeconfig setup (Fixes UNREACHABLE!)
+    - name: A1.95. CRITICAL WAIT Wait for connection to stabilize
       ansible.builtin.wait_for_connection:
         timeout: 60
       when: init_result is success
       
     # ----------------------------------------------------------------------
-    # A2. CRITICAL WAIT: Wait for the API server static pod to become ready
-    # (FIXED: Ensuring KUBECONFIG is set for root user to resolve 127.0.0.1:8080 connection failure)
+    # A2. Wait for API Server Pod to be ready
     # ----------------------------------------------------------------------
-    - name: A2. Wait for API Server Pod to be running before CNI install (FIXED KUBECONFIG)
+    - name: A2. Wait for API Server Pod to be running before CNI install
       ansible.builtin.shell: |
-        # Explicitly set KUBECONFIG for the root user to point to the secure config file
-        KUBECONFIG=/etc/kubernetes/admin.conf kubectl get pod -n kube-system -l component=kube-apiserver -o jsonpath='{.items[0].status.containerStatuses[*].ready}' | grep -q 'true'
+        kubectl get pod -n kube-system -l component=kube-apiserver -o jsonpath='{.items[0].status.containerStatuses[*].ready}' | grep -q 'true'
+      environment:
+        KUBECONFIG: /etc/kubernetes/admin.conf
       register: apiserver_ready_check
       until: apiserver_ready_check.rc == 0
-      retries: 30 # Try 30 times (5 minutes total)
-      delay: 10   # Wait 10 seconds between checks
+      retries: 30
+      delay: 10
       changed_when: false
       when: init_result is success
 
     # ----------------------------------------------------------------------
     # C. Install CNI (Calico)
     # ----------------------------------------------------------------------
-    - name: C1. Install Calico CNI (FIXED KUBECONFIG)
+    - name: C1. Install Calico CNI
       ansible.builtin.command: >
-        KUBECONFIG=/etc/kubernetes/admin.conf kubectl apply -f https://raw.githubusercontent.com/projectcalico/calico/v3.27.0/manifests/calico.yaml
+        kubectl apply -f https://raw.githubusercontent.com/projectcalico/calico/v3.27.0/manifests/calico.yaml
+      environment:
+        KUBECONFIG: /etc/kubernetes/admin.conf
       register: calico_install_output
       changed_when: true
       when: init_result is success
@@ -274,11 +271,13 @@
       ansible.builtin.shell:
         cmd: >
           kubeadm token create --print-join-command --ttl 0
+      environment:
+        KUBECONFIG: /etc/kubernetes/admin.conf
       register: worker_join_command
       changed_when: false
       when: init_result is success
 
-    - name: D2. Store the join command securely for the next play
+    - name: D2. Store the join command for the next play
       ansible.builtin.set_fact:
         k8s_join_command: "{{ worker_join_command.stdout }}"
       when: init_result is success
@@ -294,9 +293,13 @@
       ansible.builtin.wait_for_connection:
         timeout: 300
 
-    - name: B. Join the cluster
+    - name: B. Reset worker node if previously configured
+      ansible.builtin.command: kubeadm reset -f
+      changed_when: true
+      ignore_errors: yes
+
+    - name: C. Join the cluster
       ansible.builtin.command: "{{ hostvars[groups['control_plane'][0]]['k8s_join_command'] }}"
       changed_when: true
       when: 
-        # Only run if the join command was successfully generated
         - hostvars[groups['control_plane'][0]]['k8s_join_command'] is defined
