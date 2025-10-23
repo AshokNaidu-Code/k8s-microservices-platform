@@ -26,7 +26,6 @@
           nameserver 8.8.4.4
         create: yes
         marker: "# {mark} ANSIBLE MANAGED BLOCK - CRITICAL DNS FIX"
-      # Using 'worker_nodes' as fixed in the previous iteration
       when: inventory_hostname in groups['control_plane'] or inventory_hostname in groups['worker_nodes']
 
     - name: A.2. Update apt cache
@@ -245,28 +244,25 @@
       
     # ----------------------------------------------------------------------
     # A2. CRITICAL WAIT: Wait for the API server static pod to become ready
-    # (FIXED: Replacing k8s_info with resilient kubectl shell loop to bypass 403 Forbidden)
+    # (FIXED: Ensuring KUBECONFIG is set for root user to resolve 127.0.0.1:8080 connection failure)
     # ----------------------------------------------------------------------
-    - name: A2. Wait for API Server Pod to be running before CNI install (FIXED 403 Forbidden)
+    - name: A2. Wait for API Server Pod to be running before CNI install (FIXED KUBECONFIG)
       ansible.builtin.shell: |
-        kubectl get pod -n kube-system -l component=kube-apiserver -o jsonpath='{.items[0].status.containerStatuses[*].ready}' | grep -q 'true'
-      environment:
-        KUBECONFIG: /etc/kubernetes/admin.conf
+        # Explicitly set KUBECONFIG for the root user to point to the secure config file
+        KUBECONFIG=/etc/kubernetes/admin.conf kubectl get pod -n kube-system -l component=kube-apiserver -o jsonpath='{.items[0].status.containerStatuses[*].ready}' | grep -q 'true'
       register: apiserver_ready_check
       until: apiserver_ready_check.rc == 0
-      retries: 30
-      delay: 10
+      retries: 30 # Try 30 times (5 minutes total)
+      delay: 10   # Wait 10 seconds between checks
       changed_when: false
       when: init_result is success
 
     # ----------------------------------------------------------------------
     # C. Install CNI (Calico)
     # ----------------------------------------------------------------------
-    - name: C1. Install Calico CNI
+    - name: C1. Install Calico CNI (FIXED KUBECONFIG)
       ansible.builtin.command: >
-        kubectl apply -f https://raw.githubusercontent.com/projectcalico/calico/v3.27.0/manifests/calico.yaml
-      environment:
-        KUBECONFIG: /etc/kubernetes/admin.conf
+        KUBECONFIG=/etc/kubernetes/admin.conf kubectl apply -f https://raw.githubusercontent.com/projectcalico/calico/v3.27.0/manifests/calico.yaml
       register: calico_install_output
       changed_when: true
       when: init_result is success
@@ -278,12 +274,9 @@
       ansible.builtin.shell:
         cmd: >
           kubeadm token create --print-join-command --ttl 0
-      environment:
-        KUBECONFIG: /etc/kubernetes/admin.conf
       register: worker_join_command
       changed_when: false
       when: init_result is success
-
 
     - name: D2. Store the join command securely for the next play
       ansible.builtin.set_fact:
