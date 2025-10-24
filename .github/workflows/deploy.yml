@@ -51,13 +51,10 @@ jobs:
 
 
     - name: Terraform Apply
-      env:
-          TF_VAR_ssh_public_key: ${{ secrets.SSH_PUBLIC_KEY }}
       run: |
         cd infrastructure
-        echo "SSH_PUBLIC_KEY snippet: ${TF_VAR_ssh_public_key:0:20}..."
-        
-        terraform apply -auto-approve tfplan
+
+        terraform apply -auto-approve tfplan -var="ssh_public_key=${{ secrets.SSH_PUBLIC_KEY }}"
       
 
     - name: Get Infrastructure IPs
