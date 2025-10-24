@@ -17,7 +17,7 @@ Terraform state is critical and should be managed remotely (e.g., S3), never com
 *.tfstate
 *.tfstate.backup
 .terraform/
-.terraform.lock.hcl
+
 
 --- Secrets and Keys ---
 
