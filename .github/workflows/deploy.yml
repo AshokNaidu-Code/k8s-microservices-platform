@@ -85,18 +85,17 @@ jobs:
     - name: Checkout Code
       uses: actions/checkout@v4
 
-    - name: Setup SSH Key
+    - name: Setup SSH Private Key for Ansible
       run: |
         mkdir -p ~/.ssh
-        cat << EOF > ~/.ssh/k8s-key
-        ${{ secrets.SSH_PRIVATE_KEY }}
-        EOF
+        echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/k8s-key
         chmod 600 ~/.ssh/k8s-key
+
     - name: Debug Key Existence
       run: |
         ls -l ~/.ssh
         head ~/.ssh/k8s-key
-        
+
     - name: Install Ansible
       run: |
         sudo apt-get update
