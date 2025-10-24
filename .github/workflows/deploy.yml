@@ -42,7 +42,7 @@ jobs:
         chmod 644 /tmp/.ssh/id_rsa.pub
 
     - name: Terraform Init
-      run: terraform init -chdir=infrastructure
+      run: terraform -chdir=infrastructure init
 
     - name: Terraform Plan
       run: terraform plan -chdir=infrastructure -out=tfplan
