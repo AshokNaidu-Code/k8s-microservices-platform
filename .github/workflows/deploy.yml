@@ -85,23 +85,17 @@ jobs:
     - name: Checkout Code
       uses: actions/checkout@v4
 
-    - name: Setup SSH Key
+    - name: Setup SSH Private Key for Ansible
+      env:
+        SSH_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
       run: |
         mkdir -p ~/.ssh
-        
-        # 1. Print and pipe the secret, preserving newlines while trimming external whitespace.
-        # This is the safest way to extract a multiline secret in a runner environment.
-        printf "%s" "${{ secrets.SSH_PRIVATE_KEY }}" > /tmp/id_rsa_temp
-        
-        # 2. Copy the clean content to the expected path
-        cat /tmp/id_rsa_temp > ~/.ssh/k8s-key 
-        
-        # 3. Apply strict permissions (mandatory)
+        echo "${SSH_KEY}" > ~/.ssh/k8s-key
         chmod 600 ~/.ssh/k8s-key
-        
-        # 4. Remove temp file
-        rm /tmp/id_rsa_temp
-        
+        # Verify key format
+        head -1 ~/.ssh/k8s-key
+        tail -1 ~/.ssh/k8s-key
+
     - name: Debug Key Existence
       run: |
         ls -l ~/.ssh
