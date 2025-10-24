@@ -87,11 +87,17 @@ jobs:
 
     - name: Setup SSH Key
       run: |
+        # 1. Create the directory
         mkdir -p ~/.ssh
+
+        # 2. Use a HEREDOC to write the multiline secret, preserving newlines
         cat << EOF > ~/.ssh/id_rsa
         ${{ secrets.SSH_PRIVATE_KEY }}
         EOF
+
+        # 3. Apply the strict permissions required by SSH
         chmod 600 ~/.ssh/id_rsa
+        
 
     - name: Install Ansible
       run: |
