@@ -88,25 +88,15 @@ jobs:
     - name: Setup SSH Key
       run: |
         mkdir -p ~/.ssh
+        cat << EOF > ~/.ssh/k8s-key
+        ${{ secrets.SSH_PRIVATE_KEY }}
+        EOF
+        chmod 600 ~/.ssh/k8s-key
+    - name: Debug Key Existence
+      run: |
+        ls -l ~/.ssh
+        head ~/.ssh/k8s-key
         
-        # Use printf to safely clean the secret before writing with cat/heredoc
-        # This removes any accidental leading/trailing spaces/newlines from the secret value itself.
-        printf "%s" "${{ secrets.SSH_PRIVATE_KEY }}" > /tmp/id_rsa_temp
-        
-        # Use cat/heredoc with the sanitized content
-        cat /tmp/id_rsa_temp > ~/.ssh/id_rsa
-        
-        # Apply strict permissions (CRITICAL for SSH)
-        chmod 600 ~/.ssh/id_rsa
-        
-        # Remove temp file
-        rm /tmp/id_rsa_temp
-        
-        # Optional: Debug the file content's beginning to ensure it's not empty
-        echo "Private Key File Check (First line):"
-        head -n 1 ~/.ssh/id_rsa
-        
-
     - name: Install Ansible
       run: |
         sudo apt-get update
