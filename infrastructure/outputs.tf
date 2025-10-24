@@ -1,11 +1,19 @@
 output "control_plane_ip" {
-  description = "Public IP address of the Kubernetes Control Plane node."
-  # FIX: Removed [0] because control_plane is a single resource.
-  value = aws_instance.control_plane.public_ip
+  value       = aws_instance.control_plane.public_ip
+  description = "Control Plane public IP address"
 }
 
 output "worker_ips" {
-  description = "List of Public IP addresses for the Kubernetes Worker nodes."
-  # Worker nodes use 'count', so they need the splat operator [*] to get all IPs.
-  value = aws_instance.worker[*].public_ip
+  value       = [for w in aws_instance.workers : w.public_ip]
+  description = "List of worker node public IP addresses"
+}
+
+output "vpc_id" {
+  value       = aws_vpc.k8s_vpc.id
+  description = "VPC ID"
+}
+
+output "security_group_id" {
+  value       = aws_security_group.k8s_nodes.id
+  description = "Security group for K8s nodes"
 }
