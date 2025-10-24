@@ -115,8 +115,8 @@ jobs:
     - name: Run Ansible Playbook
       run: |
         ansible-playbook \
-          -i cluster-bootstrap/inventory.ini \
-          cluster-bootstrap/k8s_setup.yaml \
+          -i infrastructure/cluster-bootstrap/inventory.ini \
+          infrastructure/cluster-bootstrap/k8s_setup.yaml \
           -u ubuntu \
           -e "ansible_python_interpreter=/usr/bin/python3" \
           -e "ansible_ssh_common_args='-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null'"
