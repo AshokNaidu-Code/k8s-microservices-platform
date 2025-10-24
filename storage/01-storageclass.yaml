@@ -1,0 +1,61 @@
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: gp3-storage
+  labels:
+    type: general-purpose
+    performance: high
+provisioner: ebs.csi.aws.com
+parameters:
+  # EBS Volume Type
+  type: gp3
+  # IOPS (I/O Operations Per Second)
+  iops: "3000"
+  # Throughput in MB/s
+  throughput: "125"
+  # File system type
+  fstype: ext4
+  # Enable encryption
+  encrypted: "true"
+  # Use AWS managed key (or specify KMS key ID)
+  # kmsKeyId: arn:aws:kms:region:account-id:key/key-id
+volumeBindingMode: WaitForFirstConsumer
+reclaimPolicy: Delete
+allowVolumeExpansion: true
+---
+# Alternative: Fast NVMe Storage
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: io2-storage
+  labels:
+    type: high-performance
+    performance: ultra
+provisioner: ebs.csi.aws.com
+parameters:
+  type: io2
+  iops: "20000"
+  throughput: "1000"
+  fstype: ext4
+  encrypted: "true"
+volumeBindingMode: WaitForFirstConsumer
+reclaimPolicy: Delete
+allowVolumeExpansion: true
+---
+# Budget: Throughput Optimized Storage
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: st1-storage
+  labels:
+    type: throughput-optimized
+    performance: budget
+provisioner: ebs.csi.aws.com
+parameters:
+  type: st1
+  throughput: "500"
+  fstype: ext4
+  encrypted: "true"
+volumeBindingMode: WaitForFirstConsumer
+reclaimPolicy: Delete
+allowVolumeExpansion: true

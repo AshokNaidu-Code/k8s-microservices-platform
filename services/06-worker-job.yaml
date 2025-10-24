@@ -1,0 +1,43 @@
+apiVersion: batch/v1
+kind: Deployment
+metadata:
+  name: worker-job
+  namespace: microservices
+  labels:
+    app: worker-job
+    tier: utility
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: worker-job
+  template:
+    metadata:
+      labels:
+        app: worker-job
+        tier: utility
+    spec:
+      restartPolicy: Always
+      containers:
+      - name: worker
+        image: busybox:latest
+        command:
+        - sh
+        - -c
+        - |
+          while true; do
+            echo "Worker job running at $(date)"
+            sleep 30
+          done
+        env:
+        - name: MYSQL_HOST
+          value: "mysql"
+        - name: REDIS_HOST
+          value: "redis"
+        resources:
+          requests:
+            cpu: 50m
+            memory: 64Mi
+          limits:
+            cpu: 100m
+            memory: 128Mi

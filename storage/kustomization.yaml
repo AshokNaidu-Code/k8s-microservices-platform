@@ -1,0 +1,17 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: microservices
+
+resources:
+- 01-storageclass.yaml
+- 02-pvc-mysql.yaml
+- 03-pvc-redis.yaml
+
+commonLabels:
+  app: microservices-platform
+  component: storage
+  version: v1.0
+
+commonAnnotations:
+  documentation: "Persistent storage layer - Production Kubernetes Platform"

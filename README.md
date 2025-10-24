@@ -60,6 +60,8 @@ k8s-microservices-platform/
 │   ├── TROUBLESHOOTING.md      # Common issues and solutions
 │   ├── DEPLOYMENT.md           # Step-by-step deployment guide
 │   └── CHALLENGES_SOLVED.md    # Engineering challenges & solutions
+├── autoscaling/                # Auto-scaling configurations
+│   ├── hpa.yaml                # Horizontal Pod Autoscaler
 ├── 📄 LICENSE                  # MIT License
 ├── 📄 .gitignore               # Git ignore
 └── README.md                   # Main documentation

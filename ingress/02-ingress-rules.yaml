@@ -1,0 +1,67 @@
+---
+# TLS Secret (will be created separately with certificate)
+# See README.md for certificate generation steps
+---
+# Ingress Rules
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: microservices-ingress
+  namespace: microservices
+  labels:
+    app: microservices-platform
+  annotations:
+    # Nginx specific annotations
+    nginx.ingress.kubernetes.io/rewrite-target: /
+    nginx.ingress.kubernetes.io/ssl-protocols: "TLSv1.2 TLSv1.3"
+    nginx.ingress.kubernetes.io/ssl-ciphers: "ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256"
+    # Security headers
+    nginx.ingress.kubernetes.io/add-headers: "microservices/security-headers"
+    # CORS
+    nginx.ingress.kubernetes.io/enable-cors: "true"
+    nginx.ingress.kubernetes.io/cors-allow-origin: "*"
+    # Rate limiting
+    nginx.ingress.kubernetes.io/limit-rps: "100"
+spec:
+  ingressClassName: nginx
+  tls:
+  - hosts:
+    - api.microservices.local
+    - app.microservices.local
+    secretName: tls-secret
+  rules:
+  # API Server Route
+  - host: api.microservices.local
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: api-server
+            port:
+              number: 8080
+  # Web App Route
+  - host: app.microservices.local
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: web-app
+            port:
+              number: 80
+---
+# ConfigMap for Security Headers (optional)
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: security-headers
+  namespace: microservices
+data:
+  X-Frame-Options: "DENY"
+  X-Content-Type-Options: "nosniff"
+  X-XSS-Protection: "1; mode=block"
+  Strict-Transport-Security: "max-age=31536000; includeSubDomains"
+  Content-Security-Policy: "default-src 'self'; script-src 'self' 'unsafe-inline'"

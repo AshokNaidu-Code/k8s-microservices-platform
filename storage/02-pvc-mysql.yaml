@@ -1,0 +1,35 @@
+---
+# MySQL Persistent Volume Claim
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pvc
+  namespace: microservices
+  labels:
+    app: mysql
+    tier: database
+spec:
+  accessModes:
+  - ReadWriteOnce
+  storageClassName: gp3-storage
+  resources:
+    requests:
+      storage: 20Gi
+  # Optional: Selector for specific PV
+  # selector:
+  #   matchLabels:
+  #     location: us-east-1a
+---
+# MySQL StatefulSet (Alternative to Deployment for stateful apps)
+# This is optional - Deployment also works with PVCs
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mysql-pvc-info
+  namespace: microservices
+data:
+  pvc-size: "20Gi"
+  storage-class: "gp3-storage"
+  access-mode: "ReadWriteOnce"
+  reclaim-policy: "Delete"
+  description: "MySQL database persistent storage"

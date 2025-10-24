@@ -1,0 +1,72 @@
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: api-server-hpa
+  namespace: microservices
+  labels:
+    app: api-server
+    version: v1
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: api-server
+  
+  # Scaling limits
+  minReplicas: 2
+  maxReplicas: 10
+  
+  # Metrics to monitor
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
+  
+  # Scaling behavior
+  behavior:
+    # Scale UP: Aggressive when needed
+    scaleUp:
+      stabilizationWindowSeconds: 0  # Immediate scale-up
+      policies:
+      - type: Percent
+        value: 100                    # Double replicas
+        periodSeconds: 30
+      - type: Pods
+        value: 2                      # Or add 2 pods
+        periodSeconds: 30
+      selectPolicy: Max               # Use whichever increases most
+    
+    # Scale DOWN: Conservative to prevent flapping
+    scaleDown:
+      stabilizationWindowSeconds: 300 # Wait 5 minutes
+      policies:
+      - type: Percent
+        value: 50                     # Remove 50% of replicas
+        periodSeconds: 60
+      - type: Pods
+        value: 1                      # Or remove 1 pod minimum
+        periodSeconds: 60
+      selectPolicy: Min               # Use whichever decreases least
+---
+# ServiceMonitor for Prometheus (optional, for metrics collection)
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: api-server-hpa-info
+  namespace: microservices
+data:
+  target-deployment: "api-server"
+  min-replicas: "2"
+  max-replicas: "10"
+  cpu-threshold: "70%"
+  memory-threshold: "80%"

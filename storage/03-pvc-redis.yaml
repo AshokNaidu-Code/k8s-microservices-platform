@@ -1,0 +1,65 @@
+---
+# Redis Persistent Volume Claim
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: redis-pvc
+  namespace: microservices
+  labels:
+    app: redis
+    tier: cache
+spec:
+  accessModes:
+  - ReadWriteOnce
+  storageClassName: gp3-storage
+  resources:
+    requests:
+      storage: 10Gi
+---
+# MongoDB Persistent Volume Claim (Optional)
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mongodb-pvc
+  namespace: microservices
+  labels:
+    app: mongodb
+    tier: database
+spec:
+  accessModes:
+  - ReadWriteOnce
+  storageClassName: gp3-storage
+  resources:
+    requests:
+      storage: 50Gi
+---
+# Elasticsearch Persistent Volume Claim (Optional)
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: elasticsearch-pvc
+  namespace: microservices
+  labels:
+    app: elasticsearch
+    tier: search
+spec:
+  accessModes:
+  - ReadWriteOnce
+  storageClassName: gp3-storage
+  resources:
+    requests:
+      storage: 30Gi
+---
+# Storage Info ConfigMap
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: storage-pvc-info
+  namespace: microservices
+data:
+  redis-pvc-size: "10Gi"
+  mongodb-pvc-size: "50Gi"
+  elasticsearch-pvc-size: "30Gi"
+  all-storage-class: "gp3-storage"
+  total-storage: "90Gi"
+  monthly-cost: "~$9"

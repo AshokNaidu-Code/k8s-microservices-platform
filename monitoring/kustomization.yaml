@@ -1,0 +1,19 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: monitoring
+
+resources:
+- 01-namespace.yaml
+- 02-prometheus.yaml
+- 03-prometheus-svc.yaml
+- 04-grafana.yaml
+- 05-grafana-svc.yaml
+
+commonLabels:
+  app: microservices-platform
+  component: monitoring
+  version: v1.0
+
+commonAnnotations:
+  documentation: "Monitoring stack - Production Kubernetes Platform"
