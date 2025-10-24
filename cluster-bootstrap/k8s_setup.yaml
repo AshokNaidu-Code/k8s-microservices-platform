@@ -201,7 +201,7 @@
         name: kubernetes
         state: present
         executable: pip3
-        extra_args: --break-system-packages 
+        #extra_args: --break-system-packages 
       when: init_result is success
       
     - name: A1.7. CRITICAL WAIT Wait for API Server port (6443) to open
