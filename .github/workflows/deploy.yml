@@ -42,11 +42,14 @@ jobs:
         chmod 644 /tmp/.ssh/id_rsa.pub
 
     - name: Terraform Init
-      run: terraform -chdir=infrastructure init
+      run: | 
+        cd infrastructure
+        terraform init
 
     - name: Terraform Plan
       env:
-        TF_VAR_ssh_public_key: ${{ secrets.SSH_PUBLIC_KEY }} # <-- ADD THIS HERE
+        TF_VAR_ssh_public_key: ${{ secrets.SSH_PUBLIC_KEY }} 
+
       run: |
         cd infrastructure
         terraform plan -out=tfplan
