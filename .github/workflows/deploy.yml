@@ -87,16 +87,24 @@ jobs:
 
     - name: Setup SSH Key
       run: |
-        # 1. Create the directory
         mkdir -p ~/.ssh
-
-        # 2. Use a HEREDOC to write the multiline secret, preserving newlines
-        cat << EOF > ~/.ssh/id_rsa
-        ${{ secrets.SSH_PRIVATE_KEY }}
-        EOF
-
-        # 3. Apply the strict permissions required by SSH
+        
+        # Use printf to safely clean the secret before writing with cat/heredoc
+        # This removes any accidental leading/trailing spaces/newlines from the secret value itself.
+        printf "%s" "${{ secrets.SSH_PRIVATE_KEY }}" > /tmp/id_rsa_temp
+        
+        # Use cat/heredoc with the sanitized content
+        cat /tmp/id_rsa_temp > ~/.ssh/id_rsa
+        
+        # Apply strict permissions (CRITICAL for SSH)
         chmod 600 ~/.ssh/id_rsa
+        
+        # Remove temp file
+        rm /tmp/id_rsa_temp
+        
+        # Optional: Debug the file content's beginning to ensure it's not empty
+        echo "Private Key File Check (First line):"
+        head -n 1 ~/.ssh/id_rsa
         
 
     - name: Install Ansible
@@ -109,15 +117,18 @@ jobs:
         CP_IP="${{ needs.provision_infra.outputs.control_plane_ip }}"
         WORKER_IPS="${{ needs.provision_infra.outputs.worker_ips }}"
         
+        # Use the absolute path to the private key
+        PRIVATE_KEY_PATH="/home/runner/.ssh/id_rsa"
+        
         cat > cluster-bootstrap/inventory.ini << EOF
         [control_plane]
-        $CP_IP ansible_user=ubuntu ansible_ssh_private_key_file=~/.ssh/id_rsa
+        $CP_IP ansible_user=ubuntu ansible_ssh_private_key_file=$PRIVATE_KEY_PATH
         
         [workers]
         EOF
         
         for ip in $(echo $WORKER_IPS | tr ',' ' '); do
-          echo "$ip ansible_user=ubuntu ansible_ssh_private_key_file=~/.ssh/id_rsa" >> cluster-bootstrap/inventory.ini
+          echo "$ip ansible_user=ubuntu ansible_ssh_private_key_file=$PRIVATE_KEY_PATH" >> cluster-bootstrap/inventory.ini
         done
 
     - name: Run Ansible Playbook
