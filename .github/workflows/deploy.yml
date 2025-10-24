@@ -45,10 +45,15 @@ jobs:
       run: terraform -chdir=infrastructure init
 
     - name: Terraform Plan
-      run: terraform plan -chdir=infrastructure -out=tfplan
+      run: |
+        cd infrastructure
+        terraform plan -out=tfplan
+
 
     - name: Terraform Apply
-      run: terraform apply -auto-approve tfplan -chdir=infrastructure
+      run: |
+        cd infrastructure
+        terraform apply -auto-approve tfplan
       env:
         TF_VAR_ssh_public_key: "${{ secrets.SSH_PUBLIC_KEY }}"
 
