@@ -415,12 +415,12 @@ aws ec2 start-instances --instance-ids i-xxxxx i-yyyyy i-zzzzz
 
 ### Estimated Monthly Costs
 
-| Component | Size | Count | Cost/Month |
-|-----------|------|-------|-----------|
-| Control Plane (t3.medium) | 2 vCPU, 4GB | 1 | $28.80 |
-| Worker Nodes (t3.small) | 2 vCPU, 2GB | 3 | $62.88 |
-| EBS Storage (30-50GB) | - | 4 | $16.00 |
-| **Total** | - | - | **~$108/month** |
+|         Component         |     Size    | Count |    Cost/Month   |
+|---------------------------|-------------|-------|-----------------|
+| Control Plane (t3.medium) | 2 vCPU, 4GB |   1   |     $28.80      |
+| Worker Nodes (t3.small)   | 2 vCPU, 2GB |   3   |     $62.88      |
+| EBS Storage (30-50GB)     |     -       |   4   |     $16.00      |
+| **Total**                 |     -       |   -   | **~$108/month** |
 
 With reserved instances: ~65 USD/month (40% savings)
 With spot instances: ~40 USD/month (60% savings)

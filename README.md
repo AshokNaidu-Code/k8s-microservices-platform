@@ -60,7 +60,9 @@ k8s-microservices-platform/
 │   ├── TROUBLESHOOTING.md      # Common issues and solutions
 │   ├── DEPLOYMENT.md           # Step-by-step deployment guide
 │   └── CHALLENGES_SOLVED.md    # Engineering challenges & solutions
-└── README.md                   # This file
+├── 📄 LICENSE                  # MIT License
+├── 📄 .gitignore               # Git ignore
+└── README.md                   # Main documentation
 
 ```
 

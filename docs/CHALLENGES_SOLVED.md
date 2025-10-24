@@ -526,13 +526,13 @@ Failures occurred when assumptions about:
 ## Metrics & Success Criteria
 
 ### Deployment Success Metrics
-| Metric | Before | After |
-|--------|--------|-------|
-| Success Rate | 40% | 99.5% |
+|       Metric        |     Before      |       After        |
+|---------------------|-----------------|--------------------|
+| Success Rate        | 40%             | 99.5%              |
 | Avg Deployment Time | 45 min (manual) | 15 min (automated) |
-| SSH Failures | 20% | 0% |
-| API Server Readiness | 15 min | 2-3 min |
-| Pod Networking | Failed | 100% working |
+| SSH Failures        | 20%             | 0%                 |
+| API Server Readiness| 15 min          | 2-3 min            |
+| Pod Networking      | Failed          | 100% working       |
 
 ### Code Quality Improvements
 - **Playbook Size:** ~200 lines → ~400 lines (more robust)
