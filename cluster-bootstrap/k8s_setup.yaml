@@ -297,7 +297,7 @@
 # PLAY 3: Join Worker Nodes to the Cluster
 # ==============================================================================
 - name: 03 - Join Worker Nodes
-  hosts: worker_nodes
+  hosts: workers
   become: yes
   tasks:
     - name: A. Wait for Control Plane to finish initialization
