@@ -36,6 +36,13 @@
       ansible.builtin.apt:
         update_cache: yes
         cache_valid_time: 3600
+        
+    - name: A.3. CRITICAL FIX - Ensure UFW (Uncomplicated Firewall) is disabled
+      ansible.builtin.systemd:
+        name: ufw
+        state: stopped
+        enabled: false
+      ignore_errors: true # Continue even if UFW isn't installed
 
     # ----------------------------------------------------------------------
     # B. Install Container Runtime, Kube Tools, and PIP
@@ -185,16 +192,6 @@
       ansible.builtin.command: kubeadm reset -f
       changed_when: true
       ignore_errors: yes
-
-    - name: P9. Ensure UFW (Uncomplicated Firewall) is disabled
-      hosts: all # Run on all nodes just to be safe
-      tasks:
-        - name: Disable UFW service
-          ansible.builtin.systemd:
-            name: ufw
-            state: stopped
-            enabled: false
-          ignore_errors: true # Ignore if UFW is not installed, only focus on disabling it if present
 
     - name: A1. Run kubeadm init on the control plane
       ansible.builtin.shell: |
