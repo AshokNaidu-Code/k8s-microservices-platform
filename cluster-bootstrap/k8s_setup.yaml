@@ -203,24 +203,30 @@
 
     - name: A1. Run kubeadm init on the control plane
       ansible.builtin.shell: |
+        PUBLIC_IP=$(curl -s http://169.254.169.254/latest/meta-data/public-ipv4)
         kubeadm init \
-        --kubernetes-version v1.29.15 \
-        --pod-network-cidr={{ pod_network_cidr }} \
-        --apiserver-advertise-address={{ ansible_default_ipv4.address }} \
-        --control-plane-endpoint={{ cp_public_ip }}:6443 \
-        --cri-socket=unix:///run/containerd/containerd.sock \
-        --upload-certs \
-        --ignore-preflight-errors=all
+          --kubernetes-version v1.29.15 \
+          --pod-network-cidr=10.0.0.0/16 \
+          --apiserver-advertise-address={{ ansible_default_ipv4.address }} \
+          --control-plane-endpoint={{ ansible_default_ipv4.address }}:6443 \
+          --apiserver-cert-extra-sans={{ ansible_default_ipv4.address }},$PUBLIC_IP \
+          --cri-socket=unix:///run/containerd/containerd.sock \
+          --upload-certs \
+          --ignore-preflight-errors=all
       register: init_result
+      when: inventory_hostname in groups['control_plane']
+      retries: 3
+      delay: 10
       
     - name: A1.5. CRITICAL INSTALL Install Python Kubernetes client
       ansible.builtin.pip:
         name: kubernetes
-        state: present
+        state: latest
         executable: pip3
-        #extra_args: --break-system-packages 
       when: init_result is success
-      
+      retries: 3
+      delay: 5
+
     - name: A1.7. CRITICAL WAIT Wait for API Server port (6443) to open
       ansible.builtin.wait_for:
         host: "{{ ansible_default_ipv4.address }}"
