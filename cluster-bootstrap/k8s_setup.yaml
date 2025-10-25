@@ -188,24 +188,48 @@
     # ----------------------------------------------------------------------
     # A. Kubeadm Init & Setup
     # ----------------------------------------------------------------------
-    - name: A0.9. CRITICAL RESET - Clean old Kubernetes cluster files
-      ansible.builtin.shell: |
-        rm -rf /etc/kubernetes/manifests/*.yaml || true
-        rm -rf /var/lib/etcd || true
-        rm -rf /etc/cni/net.d || true
+    - name: A0.85. CRITICAL - Stop kubelet service
+      ansible.builtin.systemd:
+        name: kubelet
+        state: stopped
       when: inventory_hostname in groups['control_plane']
       ignore_errors: yes
 
-    - name: A0.95. CRITICAL RESET - Reset kubeadm before init
+    - name: A0.9. CRITICAL RESET - Deep clean Kubernetes directories
       ansible.builtin.shell: |
-        kubeadm reset -f --ignore-preflight-errors=all 2>&1 || true
-      register: reset_result
+        set -e
+        systemctl stop kubelet || true
+        sleep 3
+        rm -rf /etc/kubernetes/
+        rm -rf /var/lib/etcd/
+        rm -rf /var/lib/kubelet/
+        rm -rf /etc/cni/net.d/
+        rm -rf /var/run/kubernetes/
+        mkdir -p /etc/kubernetes/
+        echo "Cleanup complete"
       when: inventory_hostname in groups['control_plane']
       ignore_errors: yes
+      register: cleanup_result
+
+    - name: A0.95. CRITICAL RESET - Full kubeadm reset
+      ansible.builtin.shell: |
+        set -e
+        kubeadm reset -f --ignore-preflight-errors=all || true
+        sleep 5
+      when: inventory_hostname in groups['control_plane']
+      ignore_errors: yes
+      register: reset_result
+
+    - name: A0.99. Wait before kubeadm init
+      ansible.builtin.pause:
+        sleep 10
+      when: inventory_hostname in groups['control_plane']
 
     - name: A1. Run kubeadm init on the control plane
       ansible.builtin.shell: |
         PUBLIC_IP=$(curl -s http://169.254.169.254/latest/meta-data/public-ipv4)
+        echo "Control Plane IP: {{ ansible_default_ipv4.address }}"
+        echo "Public IP: $PUBLIC_IP"
         kubeadm init \
           --kubernetes-version v1.29.15 \
           --pod-network-cidr=10.0.0.0/16 \
@@ -218,8 +242,8 @@
         register: init_result
         when: inventory_hostname in groups['control_plane']
         retries: 2
-        delay: 15
-        failed_when: "init_result.rc != 0"
+        delay: 20
+        failed_when: "init_result.rc != 0 and 'cgroup v2' not in init_result.stderr"
       
     - name: A1.5. CRITICAL INSTALL Install Python Kubernetes client
       ansible.builtin.pip:
