@@ -188,22 +188,17 @@
     # ----------------------------------------------------------------------
     # A. Kubeadm Init & Setup
     # ----------------------------------------------------------------------
-    - name: A.0. CRITICAL RESET Reset Kubernetes cluster before init
-      ansible.builtin.command: kubeadm reset -f
-      changed_when: true
+    - name: A0.9. CRITICAL RESET - Clean old Kubernetes cluster files
+      ansible.builtin.shell: |
+        rm -rf /etc/kubernetes/manifests/*.yaml || true
+        rm -rf /var/lib/etcd || true
+        rm -rf /etc/cni/net.d || true
+      when: inventory_hostname in groups['control_plane']
       ignore_errors: yes
 
-    - name: A.0.5. CRITICAL FIX - Map Control Plane Endpoint to Internal IP (Fixes Self-Refused Connection)
-      ansible.builtin.blockinfile:
-        path: /etc/hosts
-        block: |
-          {{ ansible_default_ipv4.address }} {{ cp_public_ip }}
-        marker: "# {mark} ANSIBLE MANAGED BLOCK - K8s API Self-Access Fix"
-      changed_when: true
-
-    - name: A0.9. CRITICAL RESET - Reset Kubernetes cluster before init
+    - name: A0.95. CRITICAL RESET - Reset kubeadm before init
       ansible.builtin.shell: |
-        kubeadm reset -f --ignore-preflight-errors=all || true
+        kubeadm reset -f --ignore-preflight-errors=all 2>&1 || true
       register: reset_result
       when: inventory_hostname in groups['control_plane']
       ignore_errors: yes
@@ -220,10 +215,11 @@
           --cri-socket=unix:///run/containerd/containerd.sock \
           --upload-certs \
           --ignore-preflight-errors=all
-      register: init_result
-      when: inventory_hostname in groups['control_plane']
-      retries: 3
-      delay: 10
+        register: init_result
+        when: inventory_hostname in groups['control_plane']
+        retries: 2
+        delay: 15
+        failed_when: "init_result.rc != 0"
       
     - name: A1.5. CRITICAL INSTALL Install Python Kubernetes client
       ansible.builtin.pip:
