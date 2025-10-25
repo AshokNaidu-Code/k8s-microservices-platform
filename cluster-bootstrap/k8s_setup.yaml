@@ -191,7 +191,7 @@
         kubeadm init \
         --pod-network-cidr={{ pod_network_cidr }} \
         --apiserver-advertise-address={{ ansible_default_ipv4.address }} \
-        --control-plane-endpoint={{ ansible_default_ipv4.address }}:6443 \
+        --control-plane-endpoint={{ cp_public_ip }}:6443 \
         --cri-socket=unix:///run/containerd/containerd.sock \
         --ignore-preflight-errors=all
       register: init_result
