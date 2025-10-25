@@ -187,12 +187,15 @@
       ignore_errors: yes
 
     - name: P9. Ensure UFW (Uncomplicated Firewall) is disabled
-      ansible.builtin.systemd:
-        name: ufw
-        state: stopped
-        enabled: false
-      ignore_errors: true # Ignore if UFW is not installed/running, but ensure it's off if it is
-      
+      hosts: all # Run on all nodes just to be safe
+      tasks:
+        - name: Disable UFW service
+          ansible.builtin.systemd:
+            name: ufw
+            state: stopped
+            enabled: false
+          ignore_errors: true # Ignore if UFW is not installed, only focus on disabling it if present
+
     - name: A1. Run kubeadm init on the control plane
       ansible.builtin.shell: |
         kubeadm init \
