@@ -193,6 +193,14 @@
       changed_when: true
       ignore_errors: yes
 
+    - name: A.0.5. CRITICAL FIX - Map Control Plane Endpoint to Internal IP (Fixes Self-Refused Connection)
+      ansible.builtin.blockinfile:
+        path: /etc/hosts
+        block: |
+          {{ ansible_default_ipv4.address }} {{ cp_public_ip }}
+        marker: "# {mark} ANSIBLE MANAGED BLOCK - K8s API Self-Access Fix"
+      marker: "# {mark} ANSIBLE MANAGED BLOCK - K8s API Self-Access Fix"
+
     - name: A1. Run kubeadm init on the control plane
       ansible.builtin.shell: |
         kubeadm init \
