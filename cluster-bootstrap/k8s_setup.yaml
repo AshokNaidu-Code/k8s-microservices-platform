@@ -199,7 +199,7 @@
         block: |
           {{ ansible_default_ipv4.address }} {{ cp_public_ip }}
         marker: "# {mark} ANSIBLE MANAGED BLOCK - K8s API Self-Access Fix"
-      marker: "# {mark} ANSIBLE MANAGED BLOCK - K8s API Self-Access Fix"
+      changed_when: true
 
     - name: A1. Run kubeadm init on the control plane
       ansible.builtin.shell: |
