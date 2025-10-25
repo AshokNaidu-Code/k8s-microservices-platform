@@ -30,7 +30,7 @@
           nameserver 8.8.4.4
         create: yes
         marker: "# {mark} ANSIBLE MANAGED BLOCK - CRITICAL DNS FIX"
-      when: inventory_hostname in groups['control_plane'] or inventory_hostname in groups['worker_nodes']
+      when: inventory_hostname in groups['control_plane'] or inventory_hostname in groups['workers']
 
     - name: A.2. Update apt cache
       ansible.builtin.apt:
