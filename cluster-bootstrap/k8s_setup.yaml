@@ -252,6 +252,17 @@
       changed_when: false
       when: init_result is success
 
+    - name: A2.5. CRITICAL WAIT - Wait for API Server to stabilize
+    # Use the wait_for module to check the port on the local machine (the Control Plane)
+      ansible.builtin.wait_for:
+        port: 6443
+        host: 127.0.0.1 # Check the local host
+        state: started
+        delay: 10      # Wait 10 seconds before checking
+        timeout: 180   # Wait up to 3 minutes for stabilization (increase this)
+        msg: "Kubernetes API server port 6443 never opened/stabilized on localhost."
+      delegate_to: "{{ inventory_hostname }}"
+      when: inventory_hostname in groups['control_plane']
     # ----------------------------------------------------------------------
     # C. Install CNI (Calico)
     # ----------------------------------------------------------------------
