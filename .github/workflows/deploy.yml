@@ -40,7 +40,7 @@ jobs:
       with:
         name: tf-state
         path: infrastructure
-        
+      continue-on-error: true
     - name: Create SSH Key Files
       run: |
         mkdir -p /tmp/.ssh
