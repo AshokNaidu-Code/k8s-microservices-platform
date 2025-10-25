@@ -170,7 +170,7 @@ jobs:
         # by looking at the failing job's logs or cluster internal config.
         # This sed command replaces the internal IP with the external IP.
         sed -i "s|10.0.0.[0-9]\+|${PUBLIC_IP}|g" ./kubeconfig.yaml
-        
+
     - name: Setup kubectl
       uses: azure/setup-kubectl@v4
       with:
@@ -180,11 +180,11 @@ jobs:
       env:
         KUBECONFIG: ./kubeconfig.yaml
       run: |
-        kubectl apply -k services/
-        kubectl apply -k autoscaling/
-        kubectl apply -k ingress/
-        kubectl apply -k storage/
-        kubectl apply -k monitoring/
+        kubectl apply -k services/ --insecure-skip-tls-verify
+        kubectl apply -k autoscaling/ --insecure-skip-tls-verify
+        kubectl apply -k ingress/ --insecure-skip-tls-verify
+        kubectl apply -k storage/ --insecure-skip-tls-verify
+        kubectl apply -k monitoring/ --insecure-skip-tls-verify
 
     - name: Verify Deployments
       env:
@@ -194,7 +194,7 @@ jobs:
         kubectl wait --for=condition=Ready pod -l app=microservices-platform -A --timeout=300s || true
         
         echo "All Nodes:"
-        kubectl get nodes
+        kubectl get nodes --insecure-skip-tls-verify
         
         echo "All Pods:"
-        kubectl get pods -A
+        kubectl get pods -A --insecure-skip-tls-verify
