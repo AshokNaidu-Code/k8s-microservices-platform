@@ -160,7 +160,17 @@ jobs:
             -i ~/.ssh/id_rsa \
             ubuntu@$CP_IP:~/.kube/config ./kubeconfig.yaml
         chmod 600 ./kubeconfig.yaml
-
+        
+    # 🔑 NEW CRITICAL STEP TO REPLACE PRIVATE IP WITH PUBLIC IP
+    - name: Fix Kubeconfig IP Address
+      run: |
+        PUBLIC_IP="${{ needs.provision_infra.outputs.control_plane_ip }}"
+        
+        # NOTE: You may need to verify the exact private IP (e.g., 10.0.0.55)
+        # by looking at the failing job's logs or cluster internal config.
+        # This sed command replaces the internal IP with the external IP.
+        sed -i "s|10.0.0.[0-9]\+|${PUBLIC_IP}|g" ./kubeconfig.yaml
+        
     - name: Setup kubectl
       uses: azure/setup-kubectl@v4
       with:
