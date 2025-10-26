@@ -221,8 +221,9 @@
       register: reset_result
 
     - name: A0.99. Wait before kubeadm init
-      ansible.builtin.pause:
-        seconds 10
+      wait_for:
+        timeout: 10
+      delegate_to: localhost
       when: inventory_hostname in groups['control_plane']
 
     - name: A1. Run kubeadm init on the control plane
