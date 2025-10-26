@@ -240,11 +240,10 @@
           --cri-socket=unix:///run/containerd/containerd.sock \
           --upload-certs \
           --ignore-preflight-errors=all
-        register: init_result
-        when: inventory_hostname in groups['control_plane']
-        retries: 2
-        delay: 20
-        failed_when: "init_result.rc != 0 and 'cgroup v2' not in init_result.stderr"
+      register: init_result
+      when: inventory_hostname in groups['control_plane']
+      retries: 2
+      delay: 20
       
     - name: A1.5. CRITICAL INSTALL Install Python Kubernetes client
       ansible.builtin.pip:
