@@ -337,8 +337,12 @@
       changed_when: true
       ignore_errors: yes
 
-    - name: C. Join the cluster
-      ansible.builtin.command: "{{ hostvars[groups['control_plane'][0]]['k8s_join_command'] }}"
+    - name: C. Join the cluster with error handling
+      ansible.builtin.shell: |
+        {{ hostvars[groups['control_plane'][0]]['k8s_join_command'] }}
       changed_when: true
       when:
         - hostvars[groups['control_plane'][0]]['k8s_join_command'] is defined
+      ignore_errors: yes
+      retries: 2
+      delay: 60
