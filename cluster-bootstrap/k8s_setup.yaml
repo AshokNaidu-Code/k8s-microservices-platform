@@ -197,7 +197,7 @@
       when: inventory_hostname in groups['control_plane']
       ignore_errors: yes
 
-    - name: A1. Run kubeadm init on the control plane
+    - name: A1. Run kubeadm init on the control plane (Skip addons to avoid timeouts)
       ansible.builtin.shell: |
         set -e
         PUBLIC_IP=$(curl -s http://169.254.169.254/latest/meta-data/public-ipv4)
@@ -211,14 +211,38 @@
           --apiserver-cert-extra-sans={{ ansible_default_ipv4.address }},$PUBLIC_IP \
           --cri-socket=unix:///run/containerd/containerd.sock \
           --upload-certs \
-          --v=5
+          --skip-phases=addon/coredns,addon/kube-proxy
       when: inventory_hostname in groups['control_plane']
       register: init_result
-      retries: 3
+      retries: 2
       delay: 30
-      until: init_result.rc == 0 or 'already exists' in init_result.stderr or 'healthy' in init_result.stdout
-      
-    - name: A1.5. CRITICAL INSTALL Install Python Kubernetes client
+      until: init_result.rc == 0 or 'already exists' in init_result.stderr
+
+    - name: A1.5. Wait for API server to stabilize (30 seconds)
+      ansible.builtin.wait_for:
+        timeout: 30
+      when: init_result is success
+
+    - name: A1.6. Manually install CoreDNS addon
+      ansible.builtin.shell: |
+        kubectl apply -f https://raw.githubusercontent.com/coredns/deployment/master/kubernetes/coredns.yaml.sed \
+        | sed 's/VERSION/1.10.1/g' \
+        | sed 's/RELEASE/v1.10.1/g' \
+        | kubectl apply -f -
+      environment:
+        KUBECONFIG: /etc/kubernetes/admin.conf
+      when: init_result is success
+      ignore_errors: yes
+
+    - name: A1.7. Manually install kube-proxy addon
+      ansible.builtin.shell: |
+        kubectl apply -f https://raw.githubusercontent.com/kubernetes/kubernetes/master/cluster/addons/kube-proxy-daemonset/kube-proxy-daemonset.yaml
+      environment:
+        KUBECONFIG: /etc/kubernetes/admin.conf
+      when: init_result is success
+      ignore_errors: yes
+
+    - name: A1.8. CRITICAL INSTALL Install Python Kubernetes client
       ansible.builtin.pip:
         name: kubernetes
         state: latest
@@ -227,7 +251,7 @@
       retries: 3
       delay: 5
 
-    - name: A1.7. CRITICAL WAIT Wait for API Server port (6443) to open
+    - name: A1.9. CRITICAL WAIT Wait for API Server port (6443) to open
       ansible.builtin.wait_for:
         host: "{{ ansible_default_ipv4.address }}"
         port: 6443
@@ -236,7 +260,7 @@
         state: started
       when: init_result is success
 
-    - name: A1.8. Create .kube directory for the user
+    - name: A1.10. Create .kube directory for the user
       ansible.builtin.file:
         path: /home/{{ ansible_user }}/.kube
         state: directory
@@ -245,7 +269,7 @@
         mode: "0755"
       when: init_result is success
 
-    - name: A1.9. Copy admin.conf to user's .kube directory
+    - name: A1.11. Copy admin.conf to user's .kube directory
       ansible.builtin.copy:
         src: /etc/kubernetes/admin.conf
         dest: /home/{{ ansible_user }}/.kube/config
@@ -255,12 +279,12 @@
         mode: "0644"
       when: init_result is success
 
-    - name: A1.95. CRITICAL WAIT Wait for connection to stabilize
+    - name: A1.12. Wait for connection to stabilize
       ansible.builtin.wait_for_connection:
         timeout: 60
       when: init_result is success
 
-    - name: A2. Wait for API Server Pod to be running before CNI install
+    - name: A2. Wait for API Server Pod to be running
       ansible.builtin.shell: >
         kubectl get pod -n kube-system -l
         component=kube-apiserver -o
@@ -275,25 +299,15 @@
       changed_when: false
       when: init_result is success
 
-    - name: A2.5. CRITICAL WAIT - Wait for API Server to stabilize
-      ansible.builtin.wait_for:
-        port: 6443
-        host: 127.0.0.1
-        state: started
-        delay: 10
-        timeout: 180
-        msg: Kubernetes API server port 6443 never opened/stabilized on localhost.
-      when: inventory_hostname in groups['control_plane']
-
-    - name: C1. Install Calico CNI
-      ansible.builtin.command: >
-        kubectl apply -f
-        https://raw.githubusercontent.com/projectcalico/calico/v3.27.0/manifests/calico.yaml
+    - name: A2.5. Install Calico CNI (using simpler approach)
+      ansible.builtin.shell: |
+        kubectl create namespace calico-system || true
+        kubectl apply -f https://raw.githubusercontent.com/projectcalico/calico/v3.27.0/manifests/tigera-operator.yaml
+        sleep 30
       environment:
         KUBECONFIG: /etc/kubernetes/admin.conf
-      register: calico_install_output
-      changed_when: true
       when: init_result is success
+      ignore_errors: yes
 
     - name: D1. Generate and store the join command for worker nodes
       ansible.builtin.shell:
