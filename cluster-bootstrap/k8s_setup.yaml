@@ -6,14 +6,14 @@
   vars:
     pod_network_cidr: 10.0.0.0/16
   tasks:
-    - name: "A.0. CRITICAL WAIT: Wait for SSH Connection to be stable on all nodes
-        (Fixes Unreachable)"
+    - name: "A.0. CRITICAL WAIT: Wait for SSH Connection to be stable on all nodes"
       ansible.builtin.wait_for_connection:
         timeout: 300
+
     - name: Set SSH extra args for resiliency
       set_fact:
-        ansible_ssh_extra_args: -o StrictHostKeyChecking=no -o ServerAliveInterval=50 -o
-          ServerAliveCountMax=10
+        ansible_ssh_extra_args: -o StrictHostKeyChecking=no -o ServerAliveInterval=50 -o ServerAliveCountMax=10
+
     - name: A.1. CRITICAL FIX - Ensure DNS is working by using Google Public DNS
       ansible.builtin.blockinfile:
         path: /etc/resolv.conf
@@ -22,18 +22,20 @@
           nameserver 8.8.4.4
         create: yes
         marker: "# {mark} ANSIBLE MANAGED BLOCK - CRITICAL DNS FIX"
-      when: inventory_hostname in groups['control_plane'] or inventory_hostname in
-        groups['workers']
+      when: inventory_hostname in groups['control_plane'] or inventory_hostname in groups['workers']
+
     - name: A.2. Update apt cache
       ansible.builtin.apt:
         update_cache: yes
         cache_valid_time: 3600
+
     - name: A.3. CRITICAL FIX - Ensure UFW (Uncomplicated Firewall) is disabled
       ansible.builtin.systemd:
         name: ufw
         state: stopped
         enabled: false
       ignore_errors: true
+
     - name: B1. Install Docker, containerd, Runc, and python3-pip
       ansible.builtin.apt:
         name:
@@ -44,16 +46,19 @@
           - ca-certificates
           - python3-pip
         state: present
+
     - name: B2. Ensure Docker is running and enabled
       systemd:
         name: docker
         state: started
         enabled: yes
+
     - name: C1. Ensure /etc/apt/keyrings directory exists
       ansible.builtin.file:
         path: /etc/apt/keyrings
         state: directory
         mode: "0755"
+
     - name: C2. Download Kubernetes GPG key to localhost and de-armor it
       ansible.builtin.shell: >
         curl -fsSL
@@ -62,19 +67,21 @@
       delegate_to: localhost
       run_once: yes
       become: no
+
     - name: C3. Copy downloaded GPG key from localhost to all target hosts
       ansible.builtin.copy:
         src: /tmp/kubernetes-apt-keyring.gpg
         dest: /etc/apt/keyrings/kubernetes-apt-keyring.gpg
         remote_src: no
         mode: "0644"
+
     - name: C4. Add Kubernetes repository to sources list
       ansible.builtin.apt_repository:
-        repo: deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg]
-          https://pkgs.k8s.io/core:/stable:/v1.29/deb/ /
+        repo: deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.29/deb/ /
         state: present
         update_cache: yes
         filename: kubernetes
+
     - name: C5. Install kubelet, kubeadm, and kubectl
       apt:
         name:
@@ -82,6 +89,7 @@
           - kubeadm
           - kubectl
         state: present
+
     - name: C6. Hold kubelet, kubeadm, and kubectl to prevent auto-updates
       ansible.builtin.dpkg_selections:
         name: "{{ item }}"
@@ -90,11 +98,13 @@
         - kubelet
         - kubeadm
         - kubectl
+
     - name: D0. CRITICAL FIX Disable and remove all swap (Required by Kubelet)
       ansible.builtin.shell: |
         swapoff -a
         sed -i '/\sswap\s/ s/^\(.*\)$/#\1/g' /etc/fstab
       changed_when: true
+
     - name: D1. Ensure Kubernetes prerequisites are met
       copy:
         content: |
@@ -102,6 +112,7 @@
           net.ipv4.ip_forward = 1
         dest: /etc/sysctl.d/99-kubernetes-cri.conf
         mode: "0644"
+
     - name: D.2. Load br_netfilter and overlay modules
       community.general.modprobe:
         name: "{{ item }}"
@@ -109,6 +120,7 @@
       with_items:
         - br_netfilter
         - overlay
+
     - name: D3. Apply sysctl parameters
       sysctl:
         name: "{{ item }}"
@@ -119,6 +131,7 @@
         - net.bridge.bridge-nf-call-iptables
         - net.bridge.bridge-nf-call-ip6tables
         - net.ipv4.ip_forward
+
     - name: D4. Configure docker cgroup driver to systemd
       ansible.builtin.copy:
         content: |
@@ -133,16 +146,19 @@
         dest: /etc/docker/daemon.json
         mode: "0644"
       notify: Restart docker
+
     - name: D5. Enable and restart kubelet to apply cgroup driver
       ansible.builtin.systemd:
         name: kubelet
         state: restarted
         enabled: yes
+
   handlers:
     - name: Restart docker
       ansible.builtin.systemd:
         name: docker
         state: restarted
+
 - name: 02 - Initialize Control Plane
   hosts: control_plane
   gather_facts: yes
@@ -150,50 +166,44 @@
   vars:
     pod_network_cidr: 10.0.0.0/16
   tasks:
-    - name: A0.85. CRITICAL - Stop kubelet service
+    - name: A0.85. Stop kubelet with sudo
       ansible.builtin.systemd:
         name: kubelet
         state: stopped
       when: inventory_hostname in groups['control_plane']
       ignore_errors: yes
-    - name: A0.9. CRITICAL RESET - Deep clean Kubernetes directories
+
+    - name: A0.9. Deep clean with sudo - Delete everything
       ansible.builtin.shell: |
         set -e
-        systemctl stop kubelet || true
-        sleep 3
-        rm -rf /etc/kubernetes/
-        rm -rf /var/lib/etcd/
-        rm -rf /var/lib/kubelet/
-        rm -rf /etc/cni/net.d/
-        rm -rf /var/run/kubernetes/
-        mkdir -p /etc/kubernetes/
-        echo "Cleanup complete"
-      when: inventory_hostname in groups['control_plane']
-      ignore_errors: yes
-      register: cleanup_result
-    - name: A0.95. CRITICAL RESET - Full kubeadm reset
-      ansible.builtin.shell: |
-        set -e
-        kubeadm reset -f --ignore-preflight-errors=all || true
+        sudo systemctl stop kubelet || true
+        sudo systemctl stop containerd || true
         sleep 5
+        sudo rm -rf /etc/kubernetes/
+        sudo rm -rf /var/lib/etcd/
+        sudo rm -rf /var/lib/kubelet/
+        sudo rm -rf /etc/cni/net.d/
+        sudo rm -rf /var/run/kubernetes/
+        sudo mkdir -p /etc/kubernetes/
+        sudo systemctl start containerd || true
+        sleep 10
       when: inventory_hostname in groups['control_plane']
       ignore_errors: yes
-      register: reset_result
-    - name: A0.99. Wait before kubeadm init
-      wait_for:
-        timeout: 10
-      delegate_to: localhost
+
+    - name: A0.95. Full kubeadm reset
+      ansible.builtin.shell: |
+        sudo kubeadm reset -f --ignore-preflight-errors=all || true
+        sleep 10
       when: inventory_hostname in groups['control_plane']
+      ignore_errors: yes
+
     - name: A1. Run kubeadm init on the control plane
-      ansible.builtin.shell: >
-        PUBLIC_IP=$(curl -s
-        http://169.254.169.254/latest/meta-data/public-ipv4)
-
+      ansible.builtin.shell: |
+        set -e
+        PUBLIC_IP=$(curl -s http://169.254.169.254/latest/meta-data/public-ipv4)
         echo "Control Plane IP: {{ ansible_default_ipv4.address }}"
-
         echo "Public IP: $PUBLIC_IP"
-
-        kubeadm init \
+        sudo kubeadm init \
           --kubernetes-version v1.29.15 \
           --pod-network-cidr=10.0.0.0/16 \
           --apiserver-advertise-address={{ ansible_default_ipv4.address }} \
@@ -202,10 +212,12 @@
           --cri-socket=unix:///run/containerd/containerd.sock \
           --upload-certs \
           --ignore-preflight-errors=all
-      register: init_result
       when: inventory_hostname in groups['control_plane']
+      register: init_result
       retries: 2
       delay: 20
+      until: init_result.rc == 0 or 'already exists' in init_result.stderr
+
     - name: A1.5. CRITICAL INSTALL Install Python Kubernetes client
       ansible.builtin.pip:
         name: kubernetes
@@ -214,6 +226,7 @@
       when: init_result is success
       retries: 3
       delay: 5
+
     - name: A1.7. CRITICAL WAIT Wait for API Server port (6443) to open
       ansible.builtin.wait_for:
         host: "{{ ansible_default_ipv4.address }}"
@@ -222,6 +235,7 @@
         timeout: 120
         state: started
       when: init_result is success
+
     - name: A1.8. Create .kube directory for the user
       ansible.builtin.file:
         path: /home/{{ ansible_user }}/.kube
@@ -230,6 +244,7 @@
         group: "{{ ansible_user }}"
         mode: "0755"
       when: init_result is success
+
     - name: A1.9. Copy admin.conf to user's .kube directory
       ansible.builtin.copy:
         src: /etc/kubernetes/admin.conf
@@ -239,10 +254,12 @@
         group: "{{ ansible_user }}"
         mode: "0644"
       when: init_result is success
+
     - name: A1.95. CRITICAL WAIT Wait for connection to stabilize
       ansible.builtin.wait_for_connection:
         timeout: 60
       when: init_result is success
+
     - name: A2. Wait for API Server Pod to be running before CNI install
       ansible.builtin.shell: >
         kubectl get pod -n kube-system -l
@@ -257,6 +274,7 @@
       delay: 10
       changed_when: false
       when: init_result is success
+
     - name: A2.5. CRITICAL WAIT - Wait for API Server to stabilize
       ansible.builtin.wait_for:
         port: 6443
@@ -265,8 +283,8 @@
         delay: 10
         timeout: 180
         msg: Kubernetes API server port 6443 never opened/stabilized on localhost.
-      delegate_to: "{{ inventory_hostname }}"
       when: inventory_hostname in groups['control_plane']
+
     - name: C1. Install Calico CNI
       ansible.builtin.command: >
         kubectl apply -f
@@ -276,6 +294,7 @@
       register: calico_install_output
       changed_when: true
       when: init_result is success
+
     - name: D1. Generate and store the join command for worker nodes
       ansible.builtin.shell:
         cmd: |
@@ -285,10 +304,12 @@
       register: worker_join_command
       changed_when: false
       when: init_result is success
+
     - name: D2. Store the join command for the next play
       ansible.builtin.set_fact:
         k8s_join_command: "{{ worker_join_command.stdout }}"
       when: init_result is success
+
 - name: 03 - Join Worker Nodes
   hosts: workers
   become: yes
@@ -296,10 +317,12 @@
     - name: A. Wait for Control Plane to finish initialization
       ansible.builtin.wait_for_connection:
         timeout: 300
+
     - name: B. Reset worker node if previously configured
       ansible.builtin.command: kubeadm reset -f
       changed_when: true
       ignore_errors: yes
+
     - name: C. Join the cluster
       ansible.builtin.command: "{{ hostvars[groups['control_plane'][0]]['k8s_join_command'] }}"
       changed_when: true
