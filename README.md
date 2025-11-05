@@ -1,11 +1,4 @@
 # Kubernetes Microservices Platform - Production-Ready Deployment
-# Kubernetes Microservices Platform - Production-Ready Deployment
-
-[![Kubernetes](https://img.shields.io/badge/Kubernetes-v1.29.15-blue?style=flat-square&logo=kubernetes)](https://kubernetes.io/)
-[![Terraform](https://img.shields.io/badge/Terraform-1.0%2B-purple?style=flat-square&logo=terraform)](https://terraform.io/)
-[![Ansible](https://img.shields.io/badge/Ansible-2.9%2B-red?style=flat-square&logo=ansible)](https://ansible.com/)
-[![Production Ready](https://img.shields.io/badge/Status-Production%20Ready-brightgreen?style=flat-square)](https://github.com/AshokNaidu-Code/k8s-microservices-platform)
-[![License MIT](https://img.shields.io/badge/License-MIT-yellow?style=flat-square)](LICENSE)
 
 [![Kubernetes](https://img.shields.io/badge/Kubernetes-v1.29.15-blue?style=flat-square&logo=kubernetes)](https://kubernetes.io/)
 [![Terraform](https://img.shields.io/badge/Terraform-1.0%2B-purple?style=flat-square&logo=terraform)](https://terraform.io/)
