@@ -202,7 +202,7 @@ Pod A (10.0.1.10)          Pod B (10.0.2.10)
     │                            │
     ├─ Flannel veth              ├─ Flannel veth
     │                            │
-    └─ VXLAN tunnel (UDP 4789) ─┘
+    └─ VXLAN tunnel (UDP 4789)  ─┘
          (Encapsulation)
 ```
 

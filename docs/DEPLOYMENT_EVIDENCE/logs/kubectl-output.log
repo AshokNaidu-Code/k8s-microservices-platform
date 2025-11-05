@@ -1,0 +1,68 @@
+=== Kubernetes Cluster Info ===
+Kubernetes control plane is running at https://127.0.0.1:65197
+CoreDNS is running at https://127.0.0.1:65197/api/v1/namespaces/kube-system/services/kube-dns:dns/proxy
+
+To further debug and diagnose cluster problems, use 'kubectl cluster-info dump'.
+
+=== All Pods ===
+NAMESPACE       NAME                                                     READY   STATUS               RESTARTS       AGE
+cert-manager    cert-manager-77b74755d9-989t8                            1/1     Running              0              119m
+cert-manager    cert-manager-cainjector-65fcfd6ccf-clz8q                 1/1     Running              0              119m
+cert-manager    cert-manager-webhook-9b4dd78-qg9wm                       1/1     Running              0              119m
+default         service-a-797c74578c-m5zzs                               1/1     Running              0              117m
+default         service-a-797c74578c-xdlcp                               1/1     Running              0              117m
+ingress-nginx   ingress-nginx-controller-6f449f6b9d-vqk99                1/1     Running              0              118m
+kube-system     coredns-674b8bbfcf-7jppt                                 1/1     Running              0              125m
+kube-system     etcd-minikube                                            1/1     Running              0              125m
+kube-system     kube-apiserver-minikube                                  1/1     Running              0              125m
+kube-system     kube-controller-manager-minikube                         1/1     Running              0              125m
+kube-system     kube-proxy-zt65x                                         1/1     Running              0              125m
+kube-system     kube-scheduler-minikube                                  1/1     Running              0              125m
+kube-system     storage-provisioner                                      1/1     Running              1 (125m ago)   125m
+monitoring      alertmanager-monitoring-stack-kube-prom-alertmanager-0   2/2     Running              0              115m
+monitoring      monitoring-stack-grafana-6b5586f6df-66rdt                3/3     Running              0              116m
+monitoring      monitoring-stack-kube-prom-operator-8464497f58-xg9bn     1/1     Running              0              116m
+monitoring      monitoring-stack-kube-state-metrics-79969f66dd-vkgjm     1/1     Running              0              116m
+monitoring      monitoring-stack-prometheus-node-exporter-vhljt          1/1     Running              0              116m
+monitoring      prometheus-monitoring-stack-kube-prom-prometheus-0       2/2     Running              0              115m
+
+=== All Services ===
+NAMESPACE       NAME                                                 TYPE        CLUSTER-IP       EXTERNAL-IP   PORT(S)                        AGE
+cert-manager    cert-manager                                         ClusterIP   10.97.85.94      <none>        9402/TCP                       119m
+cert-manager    cert-manager-cainjector                              ClusterIP   10.97.236.134    <none>        9402/TCP                       119m
+cert-manager    cert-manager-webhook                                 ClusterIP   10.102.58.66     <none>        443/TCP,9402/TCP               119m
+default         kubernetes                                           ClusterIP   10.96.0.1        <none>        443/TCP                        125m
+default         service-a                                            ClusterIP   10.97.102.19     <none>        80/TCP                         117m
+ingress-nginx   ingress-nginx-controller                             NodePort    10.104.93.159    <none>        80:32091/TCP,443:30237/TCP     118m
+ingress-nginx   ingress-nginx-controller-admission                   ClusterIP   10.111.100.100   <none>        443/TCP                        118m
+kube-system     kube-dns                                             ClusterIP   10.96.0.10       <none>        53/UDP,53/TCP,9153/TCP         125m
+kube-system     monitoring-stack-kube-prom-coredns                   ClusterIP   None             <none>        9153/TCP                       116m
+kube-system     monitoring-stack-kube-prom-kube-controller-manager   ClusterIP   None             <none>        10257/TCP                      116m
+kube-system     monitoring-stack-kube-prom-kube-etcd                 ClusterIP   None             <none>        2381/TCP                       116m
+kube-system     monitoring-stack-kube-prom-kube-proxy                ClusterIP   None             <none>        10249/TCP                      116m
+kube-system     monitoring-stack-kube-prom-kube-scheduler            ClusterIP   None             <none>        10259/TCP                      116m
+kube-system     monitoring-stack-kube-prom-kubelet                   ClusterIP   None             <none>        10250/TCP,10255/TCP,4194/TCP   115m
+monitoring      alertmanager-operated                                ClusterIP   None             <none>        9093/TCP,9094/TCP,9094/UDP     115m
+monitoring      monitoring-stack-grafana                             ClusterIP   10.106.115.103   <none>        80/TCP                         116m
+monitoring      monitoring-stack-kube-prom-alertmanager              ClusterIP   10.110.170.95    <none>        9093/TCP,8080/TCP              116m
+monitoring      monitoring-stack-kube-prom-operator                  ClusterIP   10.101.236.166   <none>        443/TCP                        116m
+monitoring      monitoring-stack-kube-prom-prometheus                ClusterIP   10.96.113.84     <none>        9090/TCP,8080/TCP              116m
+monitoring      monitoring-stack-kube-state-metrics                  ClusterIP   10.100.38.173    <none>        8080/TCP                       116m
+monitoring      monitoring-stack-prometheus-node-exporter            ClusterIP   10.96.57.161     <none>        9100/TCP                       116m
+monitoring      prometheus-operated                                  ClusterIP   None             <none>        9090/TCP                       115m
+
+=== Ingress Status ===
+NAMESPACE   NAME                    CLASS   HOSTS                     ADDRESS         PORTS     AGE
+default     microservices-ingress   nginx   localhost,example.local   10.104.93.159   80, 443   116m
+
+=== Certificates ===
+NAMESPACE   NAME         READY   SECRET       AGE
+default     tls-secret   True    tls-secret   116m
+
+=== HPA Status ===
+NAME            REFERENCE              TARGETS              MINPODS   MAXPODS   REPLICAS   AGE
+service-a-hpa   Deployment/service-a   cpu: <unknown>/50%   2         10        2          116m
+
+=== Nodes ===
+NAME       STATUS   ROLES           AGE    VERSION   INTERNAL-IP    EXTERNAL-IP   OS-IMAGE             KERNEL-VERSION                       CONTAINER-RUNTIME
+minikube   Ready    control-plane   125m   v1.33.1   192.168.49.2   <none>        Ubuntu 22.04.5 LTS   5.15.153.1-microsoft-standard-WSL2   docker://28.1.1

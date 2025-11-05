@@ -1,0 +1,92 @@
+[STEP] Verifying Prerequisites
+✓ SUCCESS: kubectl found
+✓ SUCCESS: helm found
+✓ SUCCESS: Kubernetes cluster is accessible
+
+[STEP] Creating Namespaces
+✓ SUCCESS: Namespace: ingress-nginx
+✓ SUCCESS: Namespace: monitoring
+✓ SUCCESS: Namespace: cert-manager
+
+[STEP] Installing Cert-Manager (TLS Management)
+ℹ INFO: Adding Helm repository...
+ℹ INFO: Installing cert-manager...
+✓ SUCCESS: Cert-Manager installed
+ℹ INFO: Waiting for cert-manager webhook to be ready (this takes ~30 seconds)...
+✓ SUCCESS: Cert-Manager webhook is ready
+
+[STEP] Setting Up TLS with SelfSigned Issuer
+✓ SUCCESS: SelfSigned ClusterIssuer created
+
+[STEP] Installing NGINX Ingress Controller
+ℹ INFO: Adding Helm repository...
+ℹ INFO: Installing NGINX ingress controller...
+✓ SUCCESS: NGINX Ingress Controller installed
+
+[STEP] Creating Storage Class
+✓ SUCCESS: Storage Class created
+
+[STEP] Deploying Microservice (Service-A)
+ℹ INFO: Creating deployment...
+✓ SUCCESS: Service-A deployment created
+ℹ INFO: Creating service...
+✓ SUCCESS: Service-A service created
+ℹ INFO: Waiting for Service-A pods to be ready...
+✓ SUCCESS: Service-A pods are running
+
+[STEP] Creating Ingress with TLS
+✓ SUCCESS: Ingress with TLS created
+ℹ INFO: Waiting for TLS certificate to be issued (this takes ~30 seconds)...
+✓ SUCCESS: TLS certificate created
+
+[STEP] Setting Up Horizontal Pod Autoscaler (HPA)
+✓ SUCCESS: HPA created (min: 2, max: 10 replicas)
+
+[STEP] Installing Prometheus & Grafana Monitoring Stack
+ℹ INFO: Adding Helm repositories...
+ℹ INFO: Installing kube-prometheus-stack (includes Prometheus + Grafana)...
+✓ SUCCESS: Prometheus & Grafana stack installed
+
+[STEP] Verifying Deployment
+ℹ INFO: Checking all pods...
+✓ SUCCESS: Pods: 17/17 running
+ℹ INFO: Checking ingress...
+✓ SUCCESS: Ingress configured
+ℹ INFO: Checking HPA...
+✓ SUCCESS: HPA configured
+
+[STEP] Setup Complete! 🎉
+
+======================================
+Access Instructions
+======================================
+
+1. Access Grafana Dashboard
+   Command: kubectl port-forward svc/monitoring-stack-grafana -n monitoring 3000:80
+   URL: http://localhost:3000
+   Username: admin
+   Password: admin123
+
+2. Access Prometheus
+   Command: kubectl port-forward svc/monitoring-stack-kube-prom-prometheus -n monitoring 9091:9090
+   URL: http://localhost:9091
+
+3. Access Service-A via HTTPS
+   Command: kubectl port-forward svc/ingress-nginx-controller -n ingress-nginx 8443:443
+   Test: curl -k https://localhost:8443/
+
+4. Test HPA (Generate Load)
+   Start load: kubectl run load-generator --image=busybox --restart=Never -- /bin/sh -c "while true; do wget -q -O- http://service-a.default.svc.cluster.local; done"
+   Watch HPA: kubectl get hpa service-a-hpa --watch
+   Stop load: kubectl delete pod load-generator
+
+5. Useful Commands
+   kubectl get pods -A                     # View all pods
+   kubectl get svc -A                      # View all services
+   kubectl get ingress                     # View ingress
+   kubectl get hpa                         # View autoscaler
+   kubectl logs deployment/service-a       # View service logs
+
+======================================
+Setup Complete! Happy DevOps-ing! 🚀
+======================================
