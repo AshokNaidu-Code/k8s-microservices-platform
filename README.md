@@ -130,7 +130,7 @@ See [Deployment Success Report](docs/DEPLOYMENT_SUCCESS.md) for complete validat
 
 ### Visual Evidence
 - ✅ [Kubernetes Cluster Status](docs/DEPLOYMENT_EVIDENCE/screenshots/01-cluster-status.png)
-- ✅ [All Pods Running](docs/DEPLOYMENT_EVIDENCE/screenshots/02-all-pods-running)
+- ✅ [All Pods Running](docs/DEPLOYMENT_EVIDENCE/screenshots/02-all-pods-running.png)
 - ✅ [Prometheus Targets](docs/DEPLOYMENT_EVIDENCE/screenshots/03-prometheus-targets.png)
 - ✅ [Grafana Dashboard](docs/DEPLOYMENT_EVIDENCE/screenshots/04-grafana-dashboard.png)
 - ✅ [HTTPS Ingress Response](docs/DEPLOYMENT_EVIDENCE/screenshots/05-https-ingress.png)
@@ -144,7 +144,7 @@ See [Deployment Success Report](docs/DEPLOYMENT_SUCCESS.md) for complete validat
 
 This project has been **fully validated** with successful local deployment:
 
-✅ **[View Complete Deployment Report](DEPLOYMENT_SUCCESS.md)**
+✅ **[View Complete Deployment Report](docs/DEPLOYMENT_SUCCESS.md)**
 
 ### Key Metrics
 - **Pods Running:** 17/17 ✅
