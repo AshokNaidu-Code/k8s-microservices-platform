@@ -2,6 +2,8 @@
 
 A fully automated, enterprise-grade Kubernetes cluster deployment using **Terraform** for infrastructure provisioning and **Ansible** for cluster bootstrapping. This project demonstrates production-ready DevOps practices with comprehensive automation, error handling, and recovery mechanisms.
 
+## ✨ Latest Achievements
+
 ### 🎯 Infrastructure Automation (October 2025)
 **Successfully deployed production-grade Kubernetes cluster on AWS:**
 - **4-Node Kubernetes Cluster**: 1 Control Plane + 3 Worker Nodes (v1.29.15 LTS)
@@ -69,6 +71,7 @@ This isn't just a Kubernetes deployment script—it's a **battle-tested solution
 This repository provides a complete **Infrastructure-as-Code (IaC)** solution for deploying a highly available Kubernetes cluster on AWS. It automates the entire process from VPC provisioning to a fully functional multi-node Kubernetes cluster ready for microservices deployment.
 
 **Cluster Architecture:**
+```
 AWS Region (Multi-AZ Ready)
 │
 ├── VPC: 10.0.0.0/16 (Customizable)
@@ -109,7 +112,7 @@ AWS Region (Multi-AZ Ready)
         ├── Encryption: Pod-to-pod communication encrypted
         ├── Service Discovery: CoreDNS (working properly)
         └── Ingress Ready: Ready for ingress controller deployment
-
+```
 - **1 Control Plane Node** (Master) - API server, etcd, scheduler, controller manager
 - **3 Worker Nodes** - Container runtime execution and pod hosting
 - **Networking:** VPC with public/private subnets, security groups, NAT gateway
@@ -123,11 +126,11 @@ AWS Region (Multi-AZ Ready)
 ---
 ## 📊 Deployment Evidence
 
-See [Deployment Success Report](DEPLOYMENT_SUCCESS.md) for complete validation.
+See [Deployment Success Report](docs/DEPLOYMENT_SUCCESS.md) for complete validation.
 
 ### Visual Evidence
 - ✅ [Kubernetes Cluster Status](docs/DEPLOYMENT_EVIDENCE/screenshots/01-cluster-status.png)
-- ✅ [All Pods Running](docs/DEPLOYMENT_EVIDENCE/screenshots/02-pods-running.png)
+- ✅ [All Pods Running](docs/DEPLOYMENT_EVIDENCE/screenshots/02-all-pods-running)
 - ✅ [Prometheus Targets](docs/DEPLOYMENT_EVIDENCE/screenshots/03-prometheus-targets.png)
 - ✅ [Grafana Dashboard](docs/DEPLOYMENT_EVIDENCE/screenshots/04-grafana-dashboard.png)
 - ✅ [HTTPS Ingress Response](docs/DEPLOYMENT_EVIDENCE/screenshots/05-https-ingress.png)
@@ -150,8 +153,8 @@ This project has been **fully validated** with successful local deployment:
 - **Automation:** 100% (zero manual steps) ✅
 
 ### Visual Evidence
-- [Setup Script Success Output](docs/DEPLOYMENT_EVIDENCE/logs/setup-output.log)
-- [Kubernetes All Pods Running](docs/DEPLOYMENT_EVIDENCE/screenshots/02-pods-running.png)
+- [Setup Script Success Output](docs/DEPLOYMENT_EVIDENCE/logs/setup-script-output.log)
+- [Kubernetes All Pods Running](docs/DEPLOYMENT_EVIDENCE/screenshots/02-all-pods-running)
 - [Prometheus Scraping All Targets](docs/DEPLOYMENT_EVIDENCE/screenshots/03-prometheus-targets.png)
 - [Grafana Dashboard Live Data](docs/DEPLOYMENT_EVIDENCE/screenshots/04-grafana-dashboard.png)
 - [HTTPS Ingress Response](docs/DEPLOYMENT_EVIDENCE/screenshots/05-https-ingress.png)
