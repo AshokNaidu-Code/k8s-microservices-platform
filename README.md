@@ -1,4 +1,21 @@
 # Kubernetes Microservices Platform - Production-Ready Deployment
+# Kubernetes Microservices Platform - Production-Ready Deployment
+
+[![Kubernetes](https://img.shields.io/badge/Kubernetes-v1.29.15-blue?style=flat-square&logo=kubernetes)](https://kubernetes.io/)
+[![Terraform](https://img.shields.io/badge/Terraform-1.0%2B-purple?style=flat-square&logo=terraform)](https://terraform.io/)
+[![Ansible](https://img.shields.io/badge/Ansible-2.9%2B-red?style=flat-square&logo=ansible)](https://ansible.com/)
+[![Production Ready](https://img.shields.io/badge/Status-Production%20Ready-brightgreen?style=flat-square)](https://github.com/AshokNaidu-Code/k8s-microservices-platform)
+[![License MIT](https://img.shields.io/badge/License-MIT-yellow?style=flat-square)](LICENSE)
+
+[![Kubernetes](https://img.shields.io/badge/Kubernetes-v1.29.15-blue?style=flat-square&logo=kubernetes)](https://kubernetes.io/)
+[![Terraform](https://img.shields.io/badge/Terraform-1.0%2B-purple?style=flat-square&logo=terraform)](https://terraform.io/)
+[![Ansible](https://img.shields.io/badge/Ansible-2.9%2B-red?style=flat-square&logo=ansible)](https://ansible.com/)
+[![Status](https://img.shields.io/badge/Status-Production%20Ready-brightgreen?style=flat-square)](https://github.com/AshokNaidu-Code/k8s-microservices-platform)
+[![Docker](https://img.shields.io/badge/Docker-containerd-lightblue?style=flat-square&logo=docker)](https://containerd.io/)
+[![Calico](https://img.shields.io/badge/CNI-Calico-orange?style=flat-square)](https://www.tigera.io/project-calico/)
+[![License](https://img.shields.io/badge/License-MIT-yellow?style=flat-square)](LICENSE)
+
+
 
 A fully automated, enterprise-grade Kubernetes cluster deployment using **Terraform** for infrastructure provisioning and **Ansible** for cluster bootstrapping. This project demonstrates production-ready DevOps practices with comprehensive automation, error handling, and recovery mechanisms.
 
