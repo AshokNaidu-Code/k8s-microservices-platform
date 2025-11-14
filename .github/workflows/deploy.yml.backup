@@ -1,0 +1,203 @@
+# .github/workflows/deploy.yml
+
+name: K8s Platform Deployment
+
+on:
+  workflow_dispatch:
+  # Uncomment to trigger on push:
+  # push:
+  #   branches:
+  #     - main
+  #   paths:
+  #     - 'infrastructure/**'
+  #     - '.github/workflows/deploy.yml'
+
+jobs:
+  # ===================================================================
+  # Job 1: Provision Infrastructure with Terraform
+  # ===================================================================
+  provision_infra:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v4
+
+    - name: Configure AWS Credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: us-east-1
+
+    - name: Setup Terraform
+      uses: hashicorp/setup-terraform@v3
+      with:
+        terraform_version: 1.8.0
+    
+    
+    - name: Create SSH Key Files
+      run: |
+        mkdir -p /tmp/.ssh
+        echo "${{ secrets.SSH_PUBLIC_KEY }}" > /tmp/.ssh/id_rsa.pub
+        chmod 644 /tmp/.ssh/id_rsa.pub
+
+    - name: Terraform Init
+      run: | 
+        cd infrastructure
+        terraform init
+
+    - name: Terraform Plan
+      env:
+        TF_VAR_ssh_public_key: ${{ secrets.SSH_PUBLIC_KEY }} 
+
+      run: |
+        cd infrastructure
+        terraform plan -out=tfplan
+
+
+    - name: Terraform Apply 
+      run: |
+        cd infrastructure
+        terraform apply -auto-approve tfplan
+      
+
+    - name: Get Infrastructure IPs
+      id: tf_output
+      run: |
+        cd infrastructure
+        CP_IP=$(terraform output -raw control_plane_ip)
+        WORKER_IPS=$(terraform output -json worker_ips | jq -r '.[]' | paste -sd ',' -)
+        echo "control_plane_ip=$CP_IP" >> $GITHUB_OUTPUT
+        echo "worker_ips=$WORKER_IPS" >> $GITHUB_OUTPUT
+
+    outputs:
+      control_plane_ip: ${{ steps.tf_output.outputs.control_plane_ip }}
+      worker_ips: ${{ steps.tf_output.outputs.worker_ips }}
+
+  # ===================================================================
+  # Job 2: Bootstrap Kubernetes Cluster with Ansible
+  # ===================================================================
+  bootstrap_cluster:
+    needs: provision_infra
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v4
+
+    - name: Setup SSH Private Key for Ansible
+      env:
+        SSH_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+      run: |
+        mkdir -p ~/.ssh
+        echo "${SSH_KEY}" > ~/.ssh/k8s-key
+        chmod 600 ~/.ssh/k8s-key
+        # Verify key format
+        head -1 ~/.ssh/k8s-key
+        tail -1 ~/.ssh/k8s-key
+
+    - name: Debug Key Existence
+      run: |
+        ls -l ~/.ssh
+        head ~/.ssh/k8s-key
+
+    - name: Install Ansible
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y ansible
+
+    - name: Generate Ansible Inventory
+      run: |
+        CP_IP="${{ needs.provision_infra.outputs.control_plane_ip }}"
+        WORKER_IPS="${{ needs.provision_infra.outputs.worker_ips }}"
+        
+        # Use the absolute path to the private key
+        PRIVATE_KEY_PATH="/home/runner/.ssh/id_rsa"
+        
+        cat > cluster-bootstrap/inventory.ini << EOF
+        [control_plane]
+        $CP_IP ansible_user=ubuntu ansible_ssh_private_key_file=$PRIVATE_KEY_PATH cp_public_ip=$CP_IP
+        
+        [workers]
+        EOF
+        
+        for ip in $(echo $WORKER_IPS | tr ',' ' '); do
+          echo "$ip ansible_user=ubuntu ansible_ssh_private_key_file=$PRIVATE_KEY_PATH" >> cluster-bootstrap/inventory.ini
+        done
+
+    - name: Run Ansible Playbook
+      env:
+          ANSIBLE_HOST_KEY_CHECKING: "False"
+      run: |
+        ansible-playbook \
+          -i cluster-bootstrap/inventory.ini \
+          cluster-bootstrap/k8s_setup.yaml \
+          -u ubuntu \
+          -e "ansible_python_interpreter=/usr/bin/python3" \
+          -e "ansible_ssh_common_args='-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null'" \
+          -e "ansible_ssh_private_key_file=~/.ssh/k8s-key"
+
+  # ===================================================================
+  # Job 3: Deploy Applications & Monitoring
+  # ===================================================================
+  deploy_services:
+    needs: [provision_infra, bootstrap_cluster]
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v4
+
+    - name: Setup SSH Key for SCP
+      run: |
+        mkdir -p ~/.ssh
+        echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+        chmod 600 ~/.ssh/id_rsa
+
+    - name: Retrieve Kubeconfig
+      run: |
+        CP_IP="${{ needs.provision_infra.outputs.control_plane_ip }}"
+        scp -o StrictHostKeyChecking=no \
+            -o UserKnownHostsFile=/dev/null \
+            -i ~/.ssh/id_rsa \
+            ubuntu@$CP_IP:~/.kube/config ./kubeconfig.yaml
+        chmod 600 ./kubeconfig.yaml
+        
+    # 🔑 NEW CRITICAL STEP TO REPLACE PRIVATE IP WITH PUBLIC IP
+    - name: Fix Kubeconfig IP Address
+      run: |
+        PUBLIC_IP="${{ needs.provision_infra.outputs.control_plane_ip }}"
+        
+        # NOTE: You may need to verify the exact private IP (e.g., 10.0.0.55)
+        # by looking at the failing job's logs or cluster internal config.
+        # This sed command replaces the internal IP with the external IP.
+        sed -i "s|10.0.0.[0-9]\+|${PUBLIC_IP}|g" ./kubeconfig.yaml
+
+    - name: Setup kubectl
+      uses: azure/setup-kubectl@v4
+      with:
+        version: 'v1.29.15'
+
+    - name: Deploy Microservices
+      env:
+        KUBECONFIG: ./kubeconfig.yaml
+      run: |
+        kubectl apply -k services/ --insecure-skip-tls-verify
+        kubectl apply -k autoscaling/ --insecure-skip-tls-verify
+        kubectl apply -k ingress/ --insecure-skip-tls-verify
+        kubectl apply -k storage/ --insecure-skip-tls-verify
+        kubectl apply -k monitoring/ --insecure-skip-tls-verify
+
+    - name: Verify Deployments
+      env:
+        KUBECONFIG: ./kubeconfig.yaml
+      run: |
+        echo "Waiting for pods to be ready..."
+        kubectl wait --for=condition=Ready pod -l app=microservices-platform -A --timeout=300s || true
+        
+        echo "All Nodes:"
+        kubectl get nodes --insecure-skip-tls-verify
+        
+        echo "All Pods:"
+        kubectl get pods -A --insecure-skip-tls-verify

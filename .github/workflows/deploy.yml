@@ -4,200 +4,366 @@ name: K8s Platform Deployment
 
 on:
   workflow_dispatch:
-  # Uncomment to trigger on push:
-  # push:
-  #   branches:
-  #     - main
-  #   paths:
-  #     - 'infrastructure/**'
-  #     - '.github/workflows/deploy.yml'
+    inputs:
+      action:
+        description: 'Action to perform'
+        required: true
+        default: 'deploy'
+        type: choice
+        options:
+          - 'deploy'
+          - 'validate'
+          - 'destroy'
+          - 'plan-only'
+
+  push:
+    branches:
+      - main
+    paths:
+      - 'infrastructure/**'
+      - 'cluster-bootstrap/**'
+      - '.github/workflows/deploy.yml'
+
+# Environment variables
+env:
+  AWS_REGION: us-east-1
+  TF_VERSION: 1.8.0
+  ANSIBLE_VERSION: 2.15.0
 
 jobs:
-  # ===================================================================
-  # Job 1: Provision Infrastructure with Terraform
-  # ===================================================================
-  provision_infra:
+  # ============================================
+  # NEW: VALIDATION JOB (runs first, no cost)
+  # ============================================
+  validate:
+    name: Validate Configuration
     runs-on: ubuntu-latest
+    outputs:
+      terraform_valid: ${{ steps.tf_validate.outcome }}
+      ansible_valid: ${{ steps.ansible_validate.outcome }}
     
     steps:
-    - name: Checkout Code
-      uses: actions/checkout@v4
+      - name: Checkout Code
+        uses: actions/checkout@v4
 
-    - name: Configure AWS Credentials
-      uses: aws-actions/configure-aws-credentials@v4
-      with:
-        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-        aws-region: us-east-1
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
 
-    - name: Setup Terraform
-      uses: hashicorp/setup-terraform@v3
-      with:
-        terraform_version: 1.8.0
+      - name: Terraform Format Check
+        id: tf_format
+        working-directory: ./infrastructure
+        run: |
+          terraform fmt -check -recursive || true
+        continue-on-error: true
+
+      - name: Terraform Init (for validation)
+        working-directory: ./infrastructure
+        run: terraform init -backend=false
+
+      - name: Terraform Validate
+        id: tf_validate
+        working-directory: ./infrastructure
+        run: terraform validate
+        continue-on-error: true
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Ansible
+        run: |
+          pip install ansible==${{ env.ANSIBLE_VERSION }}
+          ansible --version
+
+      - name: Ansible Syntax Check
+        id: ansible_validate
+        working-directory: ./cluster-bootstrap
+        run: |
+          ansible-playbook k8s_setup.yaml --syntax-check
+        continue-on-error: true
+
+      - name: Validation Summary
+        run: |
+          echo "=== Validation Results ==="
+          echo "Terraform Valid: ${{ steps.tf_validate.outcome }}"
+          echo "Ansible Valid: ${{ steps.ansible_validate.outcome }}"
+
+  # ============================================
+  # IMPROVED: PROVISION INFRASTRUCTURE
+  # ============================================
+  provision_infra:
+    name: Provision Infrastructure
+    runs-on: ubuntu-latest
+    needs: validate
+    # Only run if not just validating
+    if: github.event.inputs.action != 'validate'
     
-    
-    - name: Create SSH Key Files
-      run: |
-        mkdir -p /tmp/.ssh
-        echo "${{ secrets.SSH_PUBLIC_KEY }}" > /tmp/.ssh/id_rsa.pub
-        chmod 644 /tmp/.ssh/id_rsa.pub
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
 
-    - name: Terraform Init
-      run: | 
-        cd infrastructure
-        terraform init
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
 
-    - name: Terraform Plan
-      env:
-        TF_VAR_ssh_public_key: ${{ secrets.SSH_PUBLIC_KEY }} 
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
 
-      run: |
-        cd infrastructure
-        terraform plan -out=tfplan
+      - name: Create SSH Key Files
+        run: |
+          mkdir -p /tmp/.ssh
+          echo "${{ secrets.SSH_PUBLIC_KEY }}" > /tmp/.ssh/id_rsa.pub
+          chmod 644 /tmp/.ssh/id_rsa.pub
 
+      - name: Terraform Init
+        working-directory: ./infrastructure
+        run: terraform init
 
-    - name: Terraform Apply 
-      run: |
-        cd infrastructure
-        terraform apply -auto-approve tfplan
-      
+      - name: Terraform Format
+        working-directory: ./infrastructure
+        run: terraform fmt -recursive
+        continue-on-error: true
 
-    - name: Get Infrastructure IPs
-      id: tf_output
-      run: |
-        cd infrastructure
-        CP_IP=$(terraform output -raw control_plane_ip)
-        WORKER_IPS=$(terraform output -json worker_ips | jq -r '.[]' | paste -sd ',' -)
-        echo "control_plane_ip=$CP_IP" >> $GITHUB_OUTPUT
-        echo "worker_ips=$WORKER_IPS" >> $GITHUB_OUTPUT
+      - name: Terraform Plan
+        id: plan
+        working-directory: ./infrastructure
+        env:
+          TF_VAR_ssh_public_key: ${{ secrets.SSH_PUBLIC_KEY }}
+        run: |
+          terraform plan -out=tfplan -no-color
+          terraform show -no-color tfplan > tfplan.txt
+
+      - name: Upload Plan Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: terraform-plan
+          path: infrastructure/tfplan.txt
+          retention-days: 7
+
+      # Only apply if action is deploy
+      - name: Terraform Apply
+        if: github.event.inputs.action == 'deploy'
+        working-directory: ./infrastructure
+        run: |
+          terraform apply -auto-approve tfplan
+          echo "Infrastructure deployed successfully"
+
+      - name: Get Infrastructure IPs
+        id: tf_output
+        if: github.event.inputs.action == 'deploy'
+        working-directory: ./infrastructure
+        run: |
+          CP_IP=$(terraform output -raw control_plane_ip)
+          WORKER_IPS=$(terraform output -json worker_ips | jq -r '.[]' | paste -sd ',' -)
+          echo "control_plane_ip=$CP_IP" >> $GITHUB_OUTPUT
+          echo "worker_ips=$WORKER_IPS" >> $GITHUB_OUTPUT
+          echo "Infrastructure IPs retrieved"
 
     outputs:
       control_plane_ip: ${{ steps.tf_output.outputs.control_plane_ip }}
       worker_ips: ${{ steps.tf_output.outputs.worker_ips }}
 
-  # ===================================================================
-  # Job 2: Bootstrap Kubernetes Cluster with Ansible
-  # ===================================================================
+  # ============================================
+  # IMPROVED: BOOTSTRAP CLUSTER
+  # ============================================
   bootstrap_cluster:
+    name: Bootstrap Kubernetes Cluster
     needs: provision_infra
     runs-on: ubuntu-latest
+    if: github.event.inputs.action == 'deploy'
     
     steps:
-    - name: Checkout Code
-      uses: actions/checkout@v4
+      - name: Checkout Code
+        uses: actions/checkout@v4
 
-    - name: Setup SSH Private Key for Ansible
-      env:
-        SSH_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
-      run: |
-        mkdir -p ~/.ssh
-        echo "${SSH_KEY}" > ~/.ssh/k8s-key
-        chmod 600 ~/.ssh/k8s-key
-        # Verify key format
-        head -1 ~/.ssh/k8s-key
-        tail -1 ~/.ssh/k8s-key
+      - name: Setup SSH Private Key for Ansible
+        env:
+          SSH_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "${SSH_KEY}" > ~/.ssh/k8s-key
+          chmod 600 ~/.ssh/k8s-key
+          # Verify key format
+          head -1 ~/.ssh/k8s-key
 
-    - name: Debug Key Existence
-      run: |
-        ls -l ~/.ssh
-        head ~/.ssh/k8s-key
+      - name: Install Ansible
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ansible
+          ansible --version
 
-    - name: Install Ansible
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y ansible
+      - name: Generate Ansible Inventory
+        run: |
+          CP_IP="${{ needs.provision_infra.outputs.control_plane_ip }}"
+          WORKER_IPS="${{ needs.provision_infra.outputs.worker_ips }}"
+          
+          PRIVATE_KEY_PATH="/home/runner/.ssh/k8s-key"
+          
+          cat > cluster-bootstrap/inventory.ini << EOF
+          [control_plane]
+          $CP_IP ansible_user=ubuntu ansible_ssh_private_key_file=$PRIVATE_KEY_PATH cp_public_ip=$CP_IP
+          
+          [workers]
+          EOF
+          
+          for ip in $(echo $WORKER_IPS | tr ',' ' '); do
+            echo "$ip ansible_user=ubuntu ansible_ssh_private_key_file=$PRIVATE_KEY_PATH" >> cluster-bootstrap/inventory.ini
+          done
 
-    - name: Generate Ansible Inventory
-      run: |
-        CP_IP="${{ needs.provision_infra.outputs.control_plane_ip }}"
-        WORKER_IPS="${{ needs.provision_infra.outputs.worker_ips }}"
-        
-        # Use the absolute path to the private key
-        PRIVATE_KEY_PATH="/home/runner/.ssh/id_rsa"
-        
-        cat > cluster-bootstrap/inventory.ini << EOF
-        [control_plane]
-        $CP_IP ansible_user=ubuntu ansible_ssh_private_key_file=$PRIVATE_KEY_PATH cp_public_ip=$CP_IP
-        
-        [workers]
-        EOF
-        
-        for ip in $(echo $WORKER_IPS | tr ',' ' '); do
-          echo "$ip ansible_user=ubuntu ansible_ssh_private_key_file=$PRIVATE_KEY_PATH" >> cluster-bootstrap/inventory.ini
-        done
+      - name: Wait for EC2 Instances
+        run: |
+          echo "Waiting 90 seconds for instances to be fully ready..."
+          sleep 90
 
-    - name: Run Ansible Playbook
-      env:
+      - name: Run Ansible Playbook
+        env:
           ANSIBLE_HOST_KEY_CHECKING: "False"
-      run: |
-        ansible-playbook \
-          -i cluster-bootstrap/inventory.ini \
-          cluster-bootstrap/k8s_setup.yaml \
-          -u ubuntu \
-          -e "ansible_python_interpreter=/usr/bin/python3" \
-          -e "ansible_ssh_common_args='-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null'" \
-          -e "ansible_ssh_private_key_file=~/.ssh/k8s-key"
+        working-directory: ./cluster-bootstrap
+        run: |
+          ansible-playbook \
+            -i inventory.ini \
+            k8s_setup.yaml \
+            -u ubuntu \
+            -e "ansible_python_interpreter=/usr/bin/python3" \
+            -e "ansible_ssh_common_args='-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null'" \
+            -e "ansible_ssh_private_key_file=~/.ssh/k8s-key" \
+            -vvv
 
-  # ===================================================================
-  # Job 3: Deploy Applications & Monitoring
-  # ===================================================================
+  # ============================================
+  # IMPROVED: DEPLOY SERVICES
+  # ============================================
   deploy_services:
+    name: Deploy Services & Monitoring
     needs: [provision_infra, bootstrap_cluster]
     runs-on: ubuntu-latest
+    if: github.event.inputs.action == 'deploy'
     
     steps:
-    - name: Checkout Code
-      uses: actions/checkout@v4
+      - name: Checkout Code
+        uses: actions/checkout@v4
 
-    - name: Setup SSH Key for SCP
-      run: |
-        mkdir -p ~/.ssh
-        echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
-        chmod 600 ~/.ssh/id_rsa
+      - name: Setup SSH Key for SCP
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
 
-    - name: Retrieve Kubeconfig
-      run: |
-        CP_IP="${{ needs.provision_infra.outputs.control_plane_ip }}"
-        scp -o StrictHostKeyChecking=no \
+      - name: Retrieve Kubeconfig
+        run: |
+          CP_IP="${{ needs.provision_infra.outputs.control_plane_ip }}"
+          scp -o StrictHostKeyChecking=no \
             -o UserKnownHostsFile=/dev/null \
             -i ~/.ssh/id_rsa \
             ubuntu@$CP_IP:~/.kube/config ./kubeconfig.yaml
-        chmod 600 ./kubeconfig.yaml
-        
-    # 🔑 NEW CRITICAL STEP TO REPLACE PRIVATE IP WITH PUBLIC IP
-    - name: Fix Kubeconfig IP Address
-      run: |
-        PUBLIC_IP="${{ needs.provision_infra.outputs.control_plane_ip }}"
-        
-        # NOTE: You may need to verify the exact private IP (e.g., 10.0.0.55)
-        # by looking at the failing job's logs or cluster internal config.
-        # This sed command replaces the internal IP with the external IP.
-        sed -i "s|10.0.0.[0-9]\+|${PUBLIC_IP}|g" ./kubeconfig.yaml
+          chmod 600 ./kubeconfig.yaml
 
-    - name: Setup kubectl
-      uses: azure/setup-kubectl@v4
-      with:
-        version: 'v1.29.15'
+      - name: Fix Kubeconfig IP Address
+        run: |
+          PUBLIC_IP="${{ needs.provision_infra.outputs.control_plane_ip }}"
+          sed -i "s|10.0.0\.[0-9]\+|${PUBLIC_IP}|g" ./kubeconfig.yaml
 
-    - name: Deploy Microservices
-      env:
-        KUBECONFIG: ./kubeconfig.yaml
-      run: |
-        kubectl apply -k services/ --insecure-skip-tls-verify
-        kubectl apply -k autoscaling/ --insecure-skip-tls-verify
-        kubectl apply -k ingress/ --insecure-skip-tls-verify
-        kubectl apply -k storage/ --insecure-skip-tls-verify
-        kubectl apply -k monitoring/ --insecure-skip-tls-verify
+      - name: Setup kubectl
+        uses: azure/setup-kubectl@v4
+        with:
+          version: 'v1.29.15'
 
-    - name: Verify Deployments
-      env:
-        KUBECONFIG: ./kubeconfig.yaml
-      run: |
-        echo "Waiting for pods to be ready..."
-        kubectl wait --for=condition=Ready pod -l app=microservices-platform -A --timeout=300s || true
-        
-        echo "All Nodes:"
-        kubectl get nodes --insecure-skip-tls-verify
-        
-        echo "All Pods:"
-        kubectl get pods -A --insecure-skip-tls-verify
+      - name: Deploy Microservices
+        env:
+          KUBECONFIG: ./kubeconfig.yaml
+        run: |
+          echo "Deploying services..."
+          kubectl apply -k services/ --insecure-skip-tls-verify
+          kubectl apply -k autoscaling/ --insecure-skip-tls-verify
+          kubectl apply -k ingress/ --insecure-skip-tls-verify
+          kubectl apply -k storage/ --insecure-skip-tls-verify
+          kubectl apply -k monitoring/ --insecure-skip-tls-verify
+          echo "Services deployed successfully"
+
+      - name: Verify Deployments
+        env:
+          KUBECONFIG: ./kubeconfig.yaml
+        run: |
+          echo "Waiting for pods to be ready..."
+          kubectl wait --for=condition=Ready pod -l app=microservices-platform -A --timeout=300s || true
+          echo ""
+          echo "=== All Nodes ==="
+          kubectl get nodes --insecure-skip-tls-verify
+          echo ""
+          echo "=== All Pods ==="
+          kubectl get pods -A --insecure-skip-tls-verify
+          echo ""
+          echo "=== Deployment Status ==="
+          kubectl get deployments -A --insecure-skip-tls-verify
+
+  # ============================================
+  # NEW: CLEANUP JOB (Destroy infrastructure)
+  # ============================================
+  cleanup:
+    name: Cleanup Infrastructure
+    needs: provision_infra
+    runs-on: ubuntu-latest
+    if: github.event.inputs.action == 'destroy'
+    
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Terraform Init
+        working-directory: ./infrastructure
+        run: terraform init
+
+      - name: Terraform Destroy
+        working-directory: ./infrastructure
+        run: |
+          echo "⚠️  Destroying infrastructure..."
+          terraform destroy -auto-approve
+          echo "✅ Infrastructure destroyed successfully"
+
+  # ============================================
+  # NEW: SUCCESS NOTIFICATION
+  # ============================================
+  notify_success:
+    name: Notify Success
+    runs-on: ubuntu-latest
+    needs: [validate, provision_infra, bootstrap_cluster, deploy_services]
+    if: success()
+    
+    steps:
+      - name: Success Message
+        run: |
+          echo "✅ Kubernetes deployment successful!"
+          echo "Control Plane IP: ${{ needs.provision_infra.outputs.control_plane_ip }}"
+
+  # ============================================
+  # NEW: FAILURE NOTIFICATION
+  # ============================================
+  notify_failure:
+    name: Notify Failure
+    runs-on: ubuntu-latest
+    needs: [validate, provision_infra, bootstrap_cluster, deploy_services]
+    if: failure()
+    
+    steps:
+      - name: Failure Alert
+        run: |
+          echo "❌ Deployment failed! Check logs for details."
+          exit 1
