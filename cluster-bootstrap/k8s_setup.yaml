@@ -4,7 +4,7 @@
   become: yes
   gather_facts: yes
   vars:
-    pod_network_cidr: 10.0.0.0/16
+    pod_network_cidr: 192.168.0.0/16
   tasks:
     - name: "A.0. CRITICAL WAIT: Wait for SSH Connection to be stable on all nodes"
       ansible.builtin.wait_for_connection:
@@ -299,15 +299,25 @@
       changed_when: false
       when: init_result is success
 
-    - name: A2.5. Install Calico CNI (using simpler approach)
-      ansible.builtin.shell: |
-        kubectl create namespace calico-system || true
-        kubectl apply -f https://raw.githubusercontent.com/projectcalico/calico/v3.27.0/manifests/tigera-operator.yaml
-        sleep 30
+    - name: A2.5. Deploy Calico CNI (Standard Manifest)
+      ansible.builtin.shell:
+        # This deploys the standard, all-in-one Calico manifest (v3.28.0)
+        cmd: |
+          kubectl apply -f https://raw.githubusercontent.com/projectcalico/calico/v3.28.0/manifests/calico.yaml
       environment:
         KUBECONFIG: /etc/kubernetes/admin.conf
       when: init_result is success
       ignore_errors: yes
+
+    - name: A2.6. Wait for Calico and Control Plane Pods to become Ready
+      # This task uses a reliable 'kubectl wait' instead of an unreliable 'sleep'
+      ansible.builtin.shell:
+        cmd: |
+          # Wait up to 300s (5 minutes) for all core pods to be 'Ready'
+          kubectl wait --for=condition=Ready pods --all -n kube-system --timeout=300s
+      environment:
+        KUBECONFIG: /etc/kubernetes/admin.conf
+      when: init_result is success
 
     - name: D1. Generate and store the join command for worker nodes
       ansible.builtin.shell:
