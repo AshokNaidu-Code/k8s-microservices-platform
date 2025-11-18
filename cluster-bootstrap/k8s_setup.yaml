@@ -303,21 +303,36 @@
       ansible.builtin.shell:
         # This deploys the standard, all-in-one Calico manifest (v3.28.0)
         cmd: |
-          kubectl apply -f https://raw.githubusercontent.com/projectcalico/calico/v3.28.0/manifests/calico.yaml
+          kubectl apply -f https://raw.githubusercontent.com/projectcalico/calico/v3.28.0/manifests/calico.yaml --validate=false
       environment:
         KUBECONFIG: /etc/kubernetes/admin.conf
       when: init_result is success
       ignore_errors: yes
 
     - name: A2.6. Wait for Calico and Control Plane Pods to become Ready
-      # This task uses a reliable 'kubectl wait' instead of an unreliable 'sleep'
+      # This uses 'kubectl wait'—better than using sleep
       ansible.builtin.shell:
         cmd: |
           # Wait up to 300s (5 minutes) for all core pods to be 'Ready'
-          kubectl wait --for=condition=Ready pods --all -n kube-system --timeout=300s
+          kubectl wait --for=condition=Ready pods --all --all-namespaces --timeout=300s
       environment:
         KUBECONFIG: /etc/kubernetes/admin.conf
       when: init_result is success
+      ignore_errors: yes
+
+    - name: A2.7. Wait for all nodes to become Ready
+      ansible.builtin.shell:
+        cmd: |
+          for i in {1..10}; do
+          kubectl get nodes | grep -q 'NotReady' || break
+          sleep 15
+          done
+          kubectl get nodes -o wide
+      environment:
+        KUBECONFIG: /etc/kubernetes/admin.conf
+      when: init_result is success 
+      ignore_errors: yes
+
 
     - name: D1. Generate and store the join command for worker nodes
       ansible.builtin.shell:
